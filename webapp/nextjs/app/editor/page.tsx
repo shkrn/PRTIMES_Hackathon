@@ -16,7 +16,10 @@ import Underline from '@tiptap/extension-underline';
 import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
 import { Button } from '@/components/tiptap-ui-primitive/button';
 import Image from '@tiptap/extension-image';
+
 import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, LinkIcon } from 'lucide-react';
+import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
+
 
 
 const PRESS_RELEASE_ID = 1;
@@ -27,14 +30,10 @@ const MAX_CONTENT_LENGTH = 500;
 
 type JsonNode = Record<string, unknown>;
 
-type HtmlImportResult = {
-  content: string;
-  title: string | null;
-};
-
 function normalizeUrl(text: string): string | null {
   const trimmed = text.trim().replace(/[),.;!?]+$/, '');
   if (!trimmed) return null;
+
   const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   try {
     const { protocol, href } = new URL(candidate);
@@ -355,6 +354,23 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     importFileInputRef.current?.click();
   }, []);
 
+  const applyImportedContent = useCallback(
+    (content: string, nextTitle: string | null, fileName: string) => {
+      if (!editor) {
+        throw new Error('エディタの初期化後に再試行してください');
+      }
+
+      editor.commands.setContent(content);
+
+      if (nextTitle) {
+        setTitle(nextTitle);
+      }
+
+      setImportStatus(`"${fileName}" をインポートしました`);
+    },
+    [editor]
+  );
+
   const handleImportFile = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -369,26 +385,15 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         return;
       }
 
-      if (!file.name.toLowerCase().endsWith('.html') && file.type !== 'text/html') {
-        setImportStatus('HTMLファイルを選択してください');
-        return;
-      }
-
       try {
-        const imported = extractImportableHtml(await file.text());
-        editor.commands.setContent(imported.content);
-
-        if (imported.title) {
-          setTitle(imported.title);
-        }
-
-        setImportStatus(`"${file.name}" をインポートしました`);
+        const imported = await importDocumentFile(file);
+        applyImportedContent(imported.content, imported.title, file.name);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'HTMLのインポートに失敗しました';
+        const message = error instanceof Error ? error.message : 'インポートに失敗しました';
         setImportStatus(message);
       }
     },
-    [editor]
+    [applyImportedContent, editor]
   );
 
   const handleImageSelection = useCallback(
@@ -467,12 +472,12 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           <input
             ref={importFileInputRef}
             type="file"
-            accept=".html,text/html"
+            accept={IMPORT_ACCEPT}
             onChange={handleImportFile}
             className={styles.hiddenFileInput}
           />
           <button type="button" onClick={openImportDialog} className={styles.importButton}>
-            HTMLをインポート
+            HTML/Wordをインポート
           </button>
           <button onClick={handleSave} className={styles.saveButton} disabled={isPending || hasError}>
             {isPending ? '保存中...' : '保存'}
