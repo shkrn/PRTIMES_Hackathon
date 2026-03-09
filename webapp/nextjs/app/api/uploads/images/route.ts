@@ -2,14 +2,39 @@ import { randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { NextResponse } from 'next/server';
+import sharp from 'sharp';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_IMAGE_EDGE = 600;
 const ALLOWED_IMAGE_TYPES = new Map([
   ['image/jpeg', 'jpg'],
   ['image/png', 'png'],
   ['image/gif', 'gif'],
-  ['image/webp', 'webp'],
 ]);
+
+async function resizeImageIfNeeded(file: File, buffer: Buffer): Promise<Buffer> {
+  if (file.type === 'image/gif') {
+    return buffer;
+  }
+
+  const image = sharp(buffer, { failOn: 'none' }).rotate();
+  const metadata = await image.metadata();
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+
+  if (Math.max(width, height) <= MAX_IMAGE_EDGE) {
+    return buffer;
+  }
+
+  return image
+    .resize({
+      width: MAX_IMAGE_EDGE,
+      height: MAX_IMAGE_EDGE,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .toBuffer();
+}
 
 export const runtime = 'nodejs';
 
@@ -23,7 +48,7 @@ export async function POST(request: Request) {
 
   if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
     return NextResponse.json(
-      { message: 'JPEG、PNG、GIF、WebP のみアップロードできます' },
+      { message: 'JPEG、PNG、GIFのみアップロードできます' },
       { status: 400 }
     );
   }
@@ -46,8 +71,10 @@ export async function POST(request: Request) {
   const fileName = `${randomUUID()}.${extension}`;
   const filePath = path.join(uploadDirectory, fileName);
   const bytes = await file.arrayBuffer();
+  const originalBuffer = Buffer.from(bytes);
+  const outputBuffer = await resizeImageIfNeeded(file, originalBuffer);
 
-  await writeFile(filePath, Buffer.from(bytes));
+  await writeFile(filePath, outputBuffer);
 
   return NextResponse.json({ url: `/uploads/${fileName}` }, { status: 201 });
 }
