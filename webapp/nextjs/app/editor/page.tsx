@@ -8,7 +8,11 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list';
 import Link from '@tiptap/extension-link';
-import type { PressRelease } from '@/lib/types';
+import type {
+  PressRelease,
+  PressReleaseTemplate,
+  PressReleaseTemplateSummary,
+} from '@/lib/types';
 import styles from './page.module.css';
 import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
@@ -24,6 +28,7 @@ import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
 
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
+const templateListQueryKey = ['press-release-templates'];
 // 文字数制限の定数
 const MAX_TITLE_LENGTH = 100;
 const MAX_CONTENT_LENGTH = 500;
@@ -58,28 +63,6 @@ function syncLinkHrefs(node: JsonNode): JsonNode {
       : node.marks;
 
   return { ...node, content, marks };
-}
-
-function extractImportableHtml(rawHtml: string): HtmlImportResult {
-  const parser = new DOMParser();
-  const documentNode = parser.parseFromString(rawHtml, 'text/html');
-
-  documentNode.querySelectorAll('script, style, noscript, iframe').forEach((node) => node.remove());
-
-  const importedTitle =
-    documentNode.querySelector('title')?.textContent?.trim() ||
-    documentNode.querySelector('h1')?.textContent?.trim() ||
-    null;
-
-  const bodyContent = documentNode.body.innerHTML.trim();
-  if (!bodyContent) {
-    throw new Error('HTML本文が空です');
-  }
-
-  return {
-    content: bodyContent,
-    title: importedTitle && importedTitle.length > 0 ? importedTitle : null,
-  };
 }
 
 function getImageFiles(files: Iterable<File>): File[] {
@@ -128,6 +111,45 @@ function useSaveMutation() {
   });
 }
 
+function useTemplateListQuery() {
+  return useQuery({
+    queryKey: templateListQueryKey,
+    queryFn: async (): Promise<PressReleaseTemplateSummary[]> => {
+      const response = await fetch('/api/templates');
+      if (!response.ok) throw new Error(`HTTPエラー: ${response.status}`);
+      return response.json();
+    },
+  });
+}
+
+function useCreateTemplateMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { name: string; title: string; content: string }) => {
+      const response = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('テンプレートの保存に失敗しました');
+      return (await response.json()) as PressReleaseTemplate;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: templateListQueryKey });
+    },
+  });
+}
+
+function useLoadTemplateMutation() {
+  return useMutation({
+    mutationFn: async (templateId: number) => {
+      const response = await fetch(`/api/templates/${templateId}`);
+      if (!response.ok) throw new Error('テンプレートの読み込みに失敗しました');
+      return (await response.json()) as PressReleaseTemplate;
+    },
+  });
+}
+
 export default function EditorPage() {
   const { data, isPending, isError } = usePressReleaseQuery();
 
@@ -152,10 +174,16 @@ export default function EditorPage() {
 
 function Editor({ initialTitle, initialContent }: { initialTitle: string; initialContent: object }) {
   const [title, setTitle] = useState(initialTitle);
+  const [templateName, setTemplateName] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [contentCount, setContentCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [templateStatus, setTemplateStatus] = useState<string | null>(null);
   const { isPending, mutate } = useSaveMutation();
+  const { data: templates = [], isPending: isTemplateListPending } = useTemplateListQuery();
+  const createTemplateMutation = useCreateTemplateMutation();
+  const loadTemplateMutation = useLoadTemplateMutation();
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -289,6 +317,13 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   });
 
   const titleCount = title.length;
+  const handleTitleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setTitle(event.target.value);
+    if (errorMessage) {
+      setErrorMessage('');
+    }
+  };
+
   // バリデーション関数
   const validateBeforeSave = (): boolean => {
     const errors: string[] = [];
@@ -324,6 +359,59 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     mutate({
       title,
       content: JSON.stringify(syncLinkHrefs(editor.getJSON() as JsonNode)),
+    });
+  };
+
+  const handleSaveTemplate = () => {
+    if (!editor) return;
+
+    const trimmedTemplateName = templateName.trim();
+    if (!trimmedTemplateName) {
+      setTemplateStatus('テンプレート名を入力してください');
+      return;
+    }
+
+    createTemplateMutation.mutate(
+      {
+        name: trimmedTemplateName,
+        title,
+        content: JSON.stringify(syncLinkHrefs(editor.getJSON() as JsonNode)),
+      },
+      {
+        onSuccess: (template) => {
+          setSelectedTemplateId(String(template.id));
+          setTemplateName('');
+          setTemplateStatus(`"${template.name}" をテンプレートとして保存しました`);
+        },
+        onError: (error) => {
+          setTemplateStatus(error instanceof Error ? error.message : 'テンプレートの保存に失敗しました');
+        },
+      }
+    );
+  };
+
+  const handleLoadTemplate = () => {
+    if (!editor) return;
+
+    const templateId = Number.parseInt(selectedTemplateId, 10);
+    if (!Number.isInteger(templateId) || templateId <= 0) {
+      setTemplateStatus('読み込むテンプレートを選択してください');
+      return;
+    }
+
+    loadTemplateMutation.mutate(templateId, {
+      onSuccess: (template) => {
+        try {
+          editor.commands.setContent(JSON.parse(template.content));
+          setTitle(template.title);
+          setTemplateStatus(`"${template.name}" を読み込みました`);
+        } catch {
+          setTemplateStatus('テンプレート本文の解析に失敗しました');
+        }
+      },
+      onError: (error) => {
+        setTemplateStatus(error instanceof Error ? error.message : 'テンプレートの読み込みに失敗しました');
+      },
     });
   };
 
@@ -458,8 +546,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     return null;
   }
   const isTitleOverLimit = titleCount > MAX_TITLE_LENGTH;
-  const isContentOverLimit = contentCount > MAX_CONTENT_LENGTH;
-  const hasError = isTitleOverLimit || isContentOverLimit;
 
   return (
     <div className={styles.container}>
@@ -479,7 +565,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           <button type="button" onClick={openImportDialog} className={styles.importButton}>
             HTML/Wordをインポート
           </button>
-          <button onClick={handleSave} className={styles.saveButton} disabled={isPending || hasError}>
+          <button onClick={handleSave} className={styles.saveButton} disabled={isPending}>
             {isPending ? '保存中...' : '保存'}
           </button>
         </div>
@@ -493,6 +579,51 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         </div>
       )}
       <main className={styles.main}>
+        <section className={styles.templatePanel}>
+          <div className={styles.templateControls}>
+            <input
+              type="text"
+              value={templateName}
+              onChange={(event) => setTemplateName(event.target.value)}
+              placeholder="テンプレート名"
+              className={styles.templateInput}
+            />
+            <button
+              type="button"
+              onClick={handleSaveTemplate}
+              className={styles.secondaryButton}
+              disabled={createTemplateMutation.isPending}
+            >
+              {createTemplateMutation.isPending ? '保存中...' : 'テンプレート保存'}
+            </button>
+          </div>
+          <div className={styles.templateControls}>
+            <select
+              value={selectedTemplateId}
+              onChange={(event) => setSelectedTemplateId(event.target.value)}
+              className={styles.templateSelect}
+              disabled={isTemplateListPending || templates.length === 0}
+            >
+              <option value="">
+                {isTemplateListPending ? 'テンプレートを読み込み中...' : 'テンプレートを選択'}
+              </option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleLoadTemplate}
+              className={styles.secondaryButton}
+              disabled={loadTemplateMutation.isPending || templates.length === 0}
+            >
+              {loadTemplateMutation.isPending ? '読込中...' : 'テンプレート読込'}
+            </button>
+          </div>
+          {templateStatus ? <p className={styles.templateStatus}>{templateStatus}</p> : null}
+        </section>
         <div
           className={`${styles.editorWrapper} ${isDraggingImage ? styles.editorWrapperDragging : ''}`}
           onDragEnter={handleDragEnter}
@@ -572,9 +703,9 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={handleTitleChange}
               placeholder="タイトルを入力してください"
-              className={styles.titleInput}
+              className={`${styles.titleInput} ${isTitleOverLimit ? styles.inputError : ''}`}
             />
           </div>
 

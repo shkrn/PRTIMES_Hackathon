@@ -11,15 +11,27 @@ export interface ErrorResponse {
   message: string;
 }
 
+export interface PressReleaseTemplateSummary {
+  id: number;
+  name: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PressReleaseTemplate extends PressReleaseTemplateSummary {
+  content: string;
+}
+
 export interface TipTapContent {
   type: string;
   content?: TipTapNode[];
-  attrs?: Record<string, any>;
+  attrs?: Record<string, unknown>;
 }
 
 export interface TipTapNode {
   type: string;
   content?: TipTapNode[];
   text?: string;
-  attrs?: Record<string, any>;
+  attrs?: Record<string, unknown>;
 }
