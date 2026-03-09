@@ -13,6 +13,10 @@ import styles from './page.module.css';
 import Bold from '@tiptap/extension-bold';
 import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
+import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
+import { Button } from '@/components/tiptap-ui-primitive/button';
+import { Spacer } from '@/components/tiptap-ui-primitive/spacer';
+import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, CodeIcon } from 'lucide-react';
 
 
 const PRESS_RELEASE_ID = 1;
@@ -143,7 +147,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     },
     immediatelyRender: false,
   });
-  // titleとcontentの文字数を計算
+    // titleとcontentの文字数を計算
   const titleCount = title.length;
   const contentCount = editor ? editor.getText().length : 0;
 
@@ -171,29 +175,59 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       </header>
       <main className={styles.main}>
         <div className={styles.editorWrapper}>
-          <div className={styles.toolbar}>
-              <button
-                onClick={() => editor.chain().focus().toggleBold().run()}
-                disabled={!editor.can().chain().focus().toggleBold().run()}
-                className={editor.isActive('bold') ? styles.isActive : ''}
-              >
-                B
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleItalic().run()}
-                disabled={!editor.can().chain().focus().toggleItalic().run()}
-                className={editor.isActive('italic') ? styles.isActive : ''}
-              >
-                i
-              </button>
-              <button
-                onClick={() => editor.chain().focus().toggleUnderline().run()}
-                disabled={!editor.can().chain().focus().toggleUnderline().run()}
-                className={editor.isActive('underline') ? styles.isActive : ''}
-              >
-                U
-              </button>
-            </div>
+          <Toolbar>
+            <ToolbarGroup>
+              <Button data-style="ghost" 
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                  disabled={!editor.can().chain().focus().toggleBold().run()}
+                  className={editor.isActive('bold') ? styles.isActive : ''}
+                >
+                <BoldIcon className="tiptap-button-icon" />
+              </Button>
+              <Button data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                  disabled={!editor.can().chain().focus().toggleItalic().run()}
+                  className={editor.isActive('italic') ? styles.isActive : ''}
+                >
+                <ItalicIcon className="tiptap-button-icon" />
+              </Button>
+              <Button data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleUnderline().run()}
+                  disabled={!editor.can().chain().focus().toggleUnderline().run()}
+                  className={editor.isActive('underline') ? styles.isActive : ''}
+                >
+                <UnderlineIcon className="tiptap-button-icon" />
+              </Button>
+            </ToolbarGroup>
+
+            <ToolbarSeparator />
+
+            <ToolbarGroup>
+              <Button data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleBulletList().run()}
+                  disabled={!editor.can().chain().focus().toggleBulletList().run()}
+                  className={editor.isActive('bulletList') ? styles.isActive : ''}
+                >
+                <ListIcon className="tiptap-button-icon" />
+              </Button>
+              <Button data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                  disabled={!editor.can().chain().focus().toggleOrderedList().run()}
+                  className={editor.isActive('orderedList') ? styles.isActive : ''}
+                >
+                <ListOrderedIcon className="tiptap-button-icon" />
+              </Button>
+            </ToolbarGroup>
+
+            <ToolbarSeparator />
+
+            <ToolbarGroup>
+              <Button data-style="ghost">
+                <ImageIcon className="tiptap-button-icon" />
+              </Button>
+            </ToolbarGroup>
+          </Toolbar>
+
           <div className={styles.titleInputWrapper}>
             <input
               type="text"
@@ -202,7 +236,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
               placeholder="タイトルを入力してください"
               className={styles.titleInput}
             />
-
           </div>
 
 
