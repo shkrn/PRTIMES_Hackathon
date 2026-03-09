@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect} from 'react';
+import { useState, useCallback, useRef, type ChangeEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
@@ -15,9 +15,8 @@ import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
 import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
 import { Button } from '@/components/tiptap-ui-primitive/button';
-import { Spacer } from '@/components/tiptap-ui-primitive/spacer';
-import Image from '@tiptap/extension-image'
-import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, CodeIcon } from 'lucide-react';
+import Image from '@tiptap/extension-image';
+import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, UploadIcon } from 'lucide-react';
 
 
 const PRESS_RELEASE_ID = 1;
@@ -27,6 +26,11 @@ const MAX_TITLE_LENGTH = 100;
 const MAX_CONTENT_LENGTH = 500;
 
 type JsonNode = Record<string, unknown>;
+
+type HtmlImportResult = {
+  content: string;
+  title: string | null;
+};
 
 function normalizeUrl(text: string): string | null {
   const trimmed = text.trim().replace(/[),.;!?]+$/, '');
@@ -55,6 +59,28 @@ function syncLinkHrefs(node: JsonNode): JsonNode {
       : node.marks;
 
   return { ...node, content, marks };
+}
+
+function extractImportableHtml(rawHtml: string): HtmlImportResult {
+  const parser = new DOMParser();
+  const documentNode = parser.parseFromString(rawHtml, 'text/html');
+
+  documentNode.querySelectorAll('script, style, noscript, iframe').forEach((node) => node.remove());
+
+  const importedTitle =
+    documentNode.querySelector('title')?.textContent?.trim() ||
+    documentNode.querySelector('h1')?.textContent?.trim() ||
+    null;
+
+  const bodyContent = documentNode.body.innerHTML.trim();
+  if (!bodyContent) {
+    throw new Error('HTML本文が空です');
+  }
+
+  return {
+    content: bodyContent,
+    title: importedTitle && importedTitle.length > 0 ? importedTitle : null,
+  };
 }
 
 function usePressReleaseQuery() {
@@ -109,10 +135,11 @@ export default function EditorPage() {
 
 function Editor({ initialTitle, initialContent }: { initialTitle: string; initialContent: object }) {
   const [title, setTitle] = useState(initialTitle);
-
   const [contentCount, setContentCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState(''); 
+  const [importStatus, setImportStatus] = useState<string | null>(null);
   const { isPending, mutate } = useSaveMutation();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -154,8 +181,10 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       },
     },
     immediatelyRender: false,
+    onCreate: ({ editor }) => {
+      setContentCount(editor.getText().length);
+    },
     onUpdate: ({ editor }) => {
-      // エディターの内容が更新されたときに文字数を更新
       setContentCount(editor.getText().length);
       console.log("onUpdate");
       if (errorMessage) {
@@ -163,13 +192,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       }
     },
   });
-  // 初期表示時に文字数を設定
-  useEffect(() => {
-    if (editor) {
-      setContentCount(editor.getText().length);
-    }
-  }, [editor]);
-    // titleとcontentの文字数を計算
+
   const titleCount = title.length;
   // タイトルが変更されたときにエラーメッセージをクリア
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,6 +249,46 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     }
   }, [editor]);
 
+  const openImportDialog = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleImportFile = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+
+      if (!file) {
+        return;
+      }
+
+      if (!editor) {
+        setImportStatus('エディタの初期化後に再試行してください');
+        return;
+      }
+
+      if (!file.name.toLowerCase().endsWith('.html') && file.type !== 'text/html') {
+        setImportStatus('HTMLファイルを選択してください');
+        return;
+      }
+
+      try {
+        const imported = extractImportableHtml(await file.text());
+        editor.commands.setContent(imported.content);
+
+        if (imported.title) {
+          setTitle(imported.title);
+        }
+
+        setImportStatus(`"${file.name}" をインポートしました`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'HTMLのインポートに失敗しました';
+        setImportStatus(message);
+      }
+    },
+    [editor]
+  );
+
 
   if (!editor) {
     return null;
@@ -241,9 +304,21 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         <div className={styles.charCounter}>
           タイトル: {titleCount}/{MAX_TITLE_LENGTH}文字 / 本文: {contentCount}/{MAX_CONTENT_LENGTH}文字
         </div>
-        <button onClick={handleSave} className={styles.saveButton} disabled={isPending}>
-          {isPending ? '保存中...' : '保存'}
-        </button>
+        <div className={styles.headerActions}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".html,text/html"
+            onChange={handleImportFile}
+            className={styles.hiddenFileInput}
+          />
+          <button type="button" onClick={openImportDialog} className={styles.importButton}>
+            HTMLをインポート
+          </button>
+          <button onClick={handleSave} className={styles.saveButton} disabled={isPending}>
+            {isPending ? '保存中...' : '保存'}
+          </button>
+        </div>
       </header>
       {errorMessage && (
         <div className={styles.errorMessage}>
@@ -304,8 +379,13 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
               <Button data-style="ghost"  onClick={addImage}>
                 <ImageIcon className="tiptap-button-icon" />
               </Button>
+              <Button data-style="ghost" onClick={openImportDialog}>
+                <UploadIcon className="tiptap-button-icon" />
+              </Button>
             </ToolbarGroup>
           </Toolbar>
+
+          {importStatus ? <p className={styles.importStatus}>{importStatus}</p> : null}
 
           <div className={styles.titleInputWrapper}>
             <input
