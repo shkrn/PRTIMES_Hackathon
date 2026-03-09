@@ -45,6 +45,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /uploads/images:
+    post:
+      summary: 画像をアップロードする
+      operationId: uploadImage
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: アップロード成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadImageResponse"
+        "400":
+          description: 不正な画像またはリクエスト
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadError"
+
     get:
       summary: 指定IDのプレスリリースを取得する
       operationId: getPressRelease
@@ -128,3 +158,24 @@ components:
           type: string
           description: エラーメッセージ
           example: "Press release not found"
+
+    UploadImageResponse:
+      type: object
+      required:
+        - url
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          format: uri
+          example: "http://localhost:8080/uploads/01234567-89ab-cdef-0123-456789abcdef.png"
+
+    UploadError:
+      type: object
+      required:
+        - message
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          example: "JPEG、PNG、GIFのみアップロードできます"

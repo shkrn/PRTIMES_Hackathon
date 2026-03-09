@@ -24,11 +24,34 @@ import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
 
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
+const DEFAULT_API_BASE_URL = 'http://localhost:8080';
 // 文字数制限の定数
 const MAX_TITLE_LENGTH = 100;
 const MAX_CONTENT_LENGTH = 500;
 
 type JsonNode = Record<string, unknown>;
+
+function getApiBaseUrl(): string {
+  const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  return value && /^https?:\/\//i.test(value) ? value : DEFAULT_API_BASE_URL;
+}
+
+const API_BASE_URL = getApiBaseUrl();
+const API_ORIGIN = new URL(API_BASE_URL).origin;
+
+function buildApiUrl(path: string): string {
+  const normalizedBase = API_BASE_URL.endsWith('/') ? API_BASE_URL : `${API_BASE_URL}/`;
+  const normalizedPath = path.replace(/^\//, '');
+  return new URL(normalizedPath, normalizedBase).toString();
+}
+
+function resolveAssetUrl(path: string): string {
+  if (!path.startsWith('/uploads/')) {
+    return path;
+  }
+
+  return new URL(path, `${API_ORIGIN}/`).toString();
+}
 
 function normalizeUrl(text: string): string | null {
   const trimmed = text.trim().replace(/[),.;!?]+$/, '');
@@ -60,26 +83,19 @@ function syncLinkHrefs(node: JsonNode): JsonNode {
   return { ...node, content, marks };
 }
 
-function extractImportableHtml(rawHtml: string): HtmlImportResult {
-  const parser = new DOMParser();
-  const documentNode = parser.parseFromString(rawHtml, 'text/html');
+function syncImageSrcs(node: JsonNode): JsonNode {
+  const content = Array.isArray(node.content)
+    ? (node.content as JsonNode[]).map(syncImageSrcs)
+    : node.content;
 
-  documentNode.querySelectorAll('script, style, noscript, iframe').forEach((node) => node.remove());
+  const attrsObject =
+    node.attrs && typeof node.attrs === 'object' ? (node.attrs as Record<string, unknown>) : null;
+  const attrs =
+    node.type === 'image' && attrsObject && typeof attrsObject.src === 'string'
+      ? { ...attrsObject, src: resolveAssetUrl(attrsObject.src) }
+      : node.attrs;
 
-  const importedTitle =
-    documentNode.querySelector('title')?.textContent?.trim() ||
-    documentNode.querySelector('h1')?.textContent?.trim() ||
-    null;
-
-  const bodyContent = documentNode.body.innerHTML.trim();
-  if (!bodyContent) {
-    throw new Error('HTML本文が空です');
-  }
-
-  return {
-    content: bodyContent,
-    title: importedTitle && importedTitle.length > 0 ? importedTitle : null,
-  };
+  return { ...node, content, attrs };
 }
 
 function getImageFiles(files: Iterable<File>): File[] {
@@ -104,7 +120,7 @@ function usePressReleaseQuery() {
   return useQuery({
     queryKey,
     queryFn: async (): Promise<PressRelease> => {
-      const response = await fetch(`/api/press-releases/${PRESS_RELEASE_ID}`);
+      const response = await fetch(buildApiUrl(`/press-releases/${PRESS_RELEASE_ID}`));
       if (!response.ok) throw new Error(`HTTPエラー: ${response.status}`);
       return response.json();
     },
@@ -115,7 +131,7 @@ function useSaveMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { title: string; content: string }) => {
-      const response = await fetch(`/api/press-releases/${PRESS_RELEASE_ID}`, {
+      const response = await fetch(buildApiUrl(`/press-releases/${PRESS_RELEASE_ID}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -147,7 +163,7 @@ export default function EditorPage() {
     );
   }
 
-  return <Editor initialTitle={data.title} initialContent={JSON.parse(data.content)} />;
+  return <Editor initialTitle={data.title} initialContent={syncImageSrcs(JSON.parse(data.content) as JsonNode)} />;
 }
 
 function Editor({ initialTitle, initialContent }: { initialTitle: string; initialContent: object }) {
@@ -167,7 +183,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch('/api/uploads/images', {
+    const response = await fetch(buildApiUrl('/uploads/images'), {
       method: 'POST',
       body: formData,
     });
