@@ -143,6 +143,9 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     },
     immediatelyRender: false,
   });
+  // titleとcontentの文字数を計算
+  const titleCount = title.length;
+  const contentCount = editor ? editor.getText().length : 0;
 
   const handleSave = () => {
     if (!editor) return;
@@ -159,6 +162,9 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>プレスリリースエディター</h1>
+        <div className={styles.charCounter}>
+          タイトル: {titleCount}文字 / 本文: {contentCount}文字
+        </div>
         <button onClick={handleSave} className={styles.saveButton} disabled={isPending}>
           {isPending ? '保存中...' : '保存'}
         </button>
@@ -196,6 +202,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
               placeholder="タイトルを入力してください"
               className={styles.titleInput}
             />
+
           </div>
 
 
