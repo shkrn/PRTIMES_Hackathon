@@ -16,7 +16,8 @@ import Underline from '@tiptap/extension-underline';
 import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
 import { Button } from '@/components/tiptap-ui-primitive/button';
 import Image from '@tiptap/extension-image';
-import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, UploadIcon } from 'lucide-react';
+import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon } from 'lucide-react';
+import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
 
 
 const PRESS_RELEASE_ID = 1;
@@ -24,14 +25,10 @@ const queryKey = ['press-release', PRESS_RELEASE_ID];
 
 type JsonNode = Record<string, unknown>;
 
-type HtmlImportResult = {
-  content: string;
-  title: string | null;
-};
-
 function normalizeUrl(text: string): string | null {
   const trimmed = text.trim().replace(/[),.;!?]+$/, '');
   if (!trimmed) return null;
+
   const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   try {
     const { protocol, href } = new URL(candidate);
@@ -56,28 +53,6 @@ function syncLinkHrefs(node: JsonNode): JsonNode {
       : node.marks;
 
   return { ...node, content, marks };
-}
-
-function extractImportableHtml(rawHtml: string): HtmlImportResult {
-  const parser = new DOMParser();
-  const documentNode = parser.parseFromString(rawHtml, 'text/html');
-
-  documentNode.querySelectorAll('script, style, noscript, iframe').forEach((node) => node.remove());
-
-  const importedTitle =
-    documentNode.querySelector('title')?.textContent?.trim() ||
-    documentNode.querySelector('h1')?.textContent?.trim() ||
-    null;
-
-  const bodyContent = documentNode.body.innerHTML.trim();
-  if (!bodyContent) {
-    throw new Error('HTML本文が空です');
-  }
-
-  return {
-    content: bodyContent,
-    title: importedTitle && importedTitle.length > 0 ? importedTitle : null,
-  };
 }
 
 function usePressReleaseQuery() {
@@ -209,6 +184,23 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     fileInputRef.current?.click();
   }, []);
 
+  const applyImportedContent = useCallback(
+    (content: string, nextTitle: string | null, fileName: string) => {
+      if (!editor) {
+        throw new Error('エディタの初期化後に再試行してください');
+      }
+
+      editor.commands.setContent(content);
+
+      if (nextTitle) {
+        setTitle(nextTitle);
+      }
+
+      setImportStatus(`"${fileName}" をインポートしました`);
+    },
+    [editor]
+  );
+
   const handleImportFile = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -223,26 +215,15 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         return;
       }
 
-      if (!file.name.toLowerCase().endsWith('.html') && file.type !== 'text/html') {
-        setImportStatus('HTMLファイルを選択してください');
-        return;
-      }
-
       try {
-        const imported = extractImportableHtml(await file.text());
-        editor.commands.setContent(imported.content);
-
-        if (imported.title) {
-          setTitle(imported.title);
-        }
-
-        setImportStatus(`"${file.name}" をインポートしました`);
+        const imported = await importDocumentFile(file);
+        applyImportedContent(imported.content, imported.title, file.name);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'HTMLのインポートに失敗しました';
+        const message = error instanceof Error ? error.message : 'インポートに失敗しました';
         setImportStatus(message);
       }
     },
-    [editor]
+    [applyImportedContent, editor]
   );
 
 
@@ -261,12 +242,12 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           <input
             ref={fileInputRef}
             type="file"
-            accept=".html,text/html"
+            accept={IMPORT_ACCEPT}
             onChange={handleImportFile}
             className={styles.hiddenFileInput}
           />
           <button type="button" onClick={openImportDialog} className={styles.importButton}>
-            HTMLをインポート
+            HTML/Wordをインポート
           </button>
           <button onClick={handleSave} className={styles.saveButton} disabled={isPending}>
             {isPending ? '保存中...' : '保存'}
@@ -324,9 +305,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
             <ToolbarGroup>
               <Button data-style="ghost"  onClick={addImage}>
                 <ImageIcon className="tiptap-button-icon" />
-              </Button>
-              <Button data-style="ghost" onClick={openImportDialog}>
-                <UploadIcon className="tiptap-button-icon" />
               </Button>
             </ToolbarGroup>
           </Toolbar>
