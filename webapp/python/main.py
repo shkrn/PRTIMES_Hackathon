@@ -3,14 +3,30 @@ Press Release Editor - FastAPI Implementation
 
 FastAPI + psycopg を使用したプレスリリースAPI実装
 """
-import os
 import json
+import os
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
 import psycopg
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps
 from psycopg.rows import dict_row
+from schemas import TemplatePayload
+
+MAX_FILE_SIZE = 5 * 1024 * 1024
+MAX_IMAGE_EDGE = 600
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+}
+UPLOAD_DIR = Path(__file__).resolve().parent / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # FastAPIアプリケーションの初期化
 app = FastAPI(
@@ -90,6 +106,33 @@ async def parse_save_request(request: Request) -> tuple[str, str]:
 def format_timestamp(value: datetime) -> str:
     """タイムスタンプを標準日時文字列へ整形する"""
     return value.strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+
+def serialize_template(row: dict) -> dict:
+    row["created_at"] = format_timestamp(row["created_at"])
+    row["updated_at"] = format_timestamp(row["updated_at"])
+    return row
+def resize_image_if_needed(content_type: str, file_bytes: bytes) -> bytes:
+    """JPEG/PNG は最大辺 600px へ縮小し、GIF はそのまま保存する"""
+    if content_type == "image/gif":
+        return file_bytes
+
+    with Image.open(BytesIO(file_bytes)) as image:
+        image = ImageOps.exif_transpose(image)
+        width, height = image.size
+
+        if max(width, height) <= MAX_IMAGE_EDGE:
+            return file_bytes
+
+        image.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE))
+
+        if content_type == "image/jpeg" and image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+
+        output = BytesIO()
+        save_format = "JPEG" if content_type == "image/jpeg" else "PNG"
+        image.save(output, format=save_format, optimize=True)
+        return output.getvalue()
 
 
 # エンドポイント
@@ -201,6 +244,145 @@ async def save_press_release(id: str, request: Request):
         )
 
 
+@app.get("/templates")
+async def list_templates():
+    """保存済みテンプレート一覧を取得する"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, name, title, created_at, updated_at
+                    FROM press_release_templates
+                    ORDER BY updated_at DESC, id DESC
+                    """
+                )
+                rows = cur.fetchall()
+                return [serialize_template(row) for row in rows]
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "message": "Internal server error"}
+        )
+
+
+@app.post("/templates")
+async def create_template(payload: TemplatePayload):
+    """現在のプレスリリース内容をテンプレートとして保存する"""
+    try:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "MISSING_REQUIRED_FIELDS", "message": "Template name is required"}
+            )
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO press_release_templates (name, title, content)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, name, title, content, created_at, updated_at
+                    """,
+                    (name, payload.title, payload.content)
+                )
+                row = cur.fetchone()
+                conn.commit()
+                return serialize_template(row)
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "message": "Internal server error"}
+        )
+
+
+@app.get("/templates/{id}")
+async def get_template(id: str):
+    """テンプレート詳細を取得する"""
+    try:
+        template_id = parse_press_release_id(id)
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, name, title, content, created_at, updated_at
+                    FROM press_release_templates
+                    WHERE id = %s
+                    """,
+                    (template_id,)
+                )
+                row = cur.fetchone()
+
+                if row is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": "NOT_FOUND", "message": "Template not found"}
+                    )
+
+                return serialize_template(row)
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "message": "Internal server error"}
+        )
+@app.post("/uploads/images", status_code=201)
+async def upload_image(request: Request, file: UploadFile = File(...)):
+    """画像をアップロードし、必要に応じて縮小して公開URLを返す"""
+    content_type = file.content_type or ""
+
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "JPEG、PNG、GIFのみアップロードできます"},
+        )
+
+    try:
+        file_bytes = await file.read()
+
+        if not file_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "画像ファイルが必要です"},
+            )
+
+        if len(file_bytes) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "画像サイズは 5MB 以下にしてください"},
+            )
+
+        try:
+            output_bytes = resize_image_if_needed(content_type, file_bytes)
+        except OSError as err:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "不正な画像形式です"},
+            ) from err
+
+        extension = ALLOWED_IMAGE_TYPES[content_type]
+        file_name = f"{uuid4()}.{extension}"
+        file_path = UPLOAD_DIR / file_name
+        file_path.write_bytes(output_bytes)
+
+        base_url = str(request.base_url).rstrip("/")
+        return {"url": f"{base_url}/uploads/{file_name}"}
+    finally:
+        await file.close()
+
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+
 # カスタム例外ハンドラー
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_request, exc: HTTPException):
@@ -224,6 +406,7 @@ async def http_exception_handler(_request, exc: HTTPException):
 async def root():
     """ヘルスチェックエンドポイント"""
     return {"message": "Press Release Editor API is running"}
+
 async def parse_save_request(request: Request) -> tuple[str, str]:
     """POSTリクエストボディを検証し、文字数制限を適用する"""
     body = await request.body()
