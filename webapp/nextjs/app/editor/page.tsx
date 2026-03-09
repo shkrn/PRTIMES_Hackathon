@@ -1,7 +1,7 @@
 'use client';
 import { useState, useCallback, useRef, type ChangeEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, type Editor as TiptapEditor } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
 import Heading from '@tiptap/extension-heading';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -81,6 +81,22 @@ function extractImportableHtml(rawHtml: string): HtmlImportResult {
     content: bodyContent,
     title: importedTitle && importedTitle.length > 0 ? importedTitle : null,
   };
+function getImageFiles(files: Iterable<File>): File[] {
+  return Array.from(files).filter((file) => file.type.startsWith('image/'));
+}
+
+function hasImageFileTransfer(dataTransfer: DataTransfer | null): boolean {
+  if (!dataTransfer) {
+    return false;
+  }
+
+  if (dataTransfer.items.length > 0) {
+    return Array.from(dataTransfer.items).some(
+      (item) => item.kind === 'file' && item.type.startsWith('image/')
+    );
+  }
+
+  return Array.from(dataTransfer.files).some((file) => file.type.startsWith('image/'));
 }
 
 function usePressReleaseQuery() {
@@ -141,6 +157,70 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const { isPending, mutate } = useSaveMutation();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const editorRef = useRef<TiptapEditor | null>(null);
+  const dragDepthRef = useRef(0);
+
+  const uploadImage = useCallback(async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/api/uploads/images', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(error?.message ?? '画像のアップロードに失敗しました');
+    }
+
+    const result = (await response.json()) as { url: string };
+    return result.url;
+  }, []);
+
+  const insertImagesFromFiles = useCallback(
+    async (files: File[], position?: number) => {
+      const imageFiles = getImageFiles(files);
+      if (imageFiles.length === 0) {
+        return;
+      }
+
+      setIsUploadingImage(true);
+
+      try {
+        let insertPosition = position;
+
+        for (const file of imageFiles) {
+          const url = await uploadImage(file);
+          const currentEditor = editorRef.current;
+          if (!currentEditor) {
+            return;
+          }
+
+          if (typeof insertPosition === 'number') {
+            currentEditor
+              .chain()
+              .focus()
+              .insertContentAt(insertPosition, { type: 'image', attrs: { src: url } })
+              .run();
+            insertPosition += 1;
+            continue;
+          }
+
+          currentEditor.chain().focus().setImage({ src: url }).run();
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '画像のアップロードに失敗しました';
+        alert(message);
+      } finally {
+        setIsUploadingImage(false);
+        setIsDraggingImage(false);
+        dragDepthRef.current = 0;
+      }
+    },
+    [uploadImage]
+  );
 
   const editor = useEditor({
     extensions: [
@@ -180,6 +260,18 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         window.open(destination, '_blank', 'noopener,noreferrer');
         return true;
       },
+      handleDrop: (view, event) => {
+        const imageFiles = getImageFiles(Array.from(event.dataTransfer?.files ?? []));
+        if (imageFiles.length === 0) {
+          return false;
+        }
+
+        event.preventDefault();
+
+        const dropPoint = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        void insertImagesFromFiles(imageFiles, dropPoint?.pos);
+        return true;
+      },
     },
     immediatelyRender: false,
     onCreate: ({ editor }) => {
@@ -215,6 +307,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     return true;
   };
 
+  editorRef.current = editor;
 
   const handleSave = () => {
     if (!editor) return;
@@ -297,40 +390,60 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
 
   const handleImageSelection = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
+      const files = Array.from(event.target.files ?? []);
       event.target.value = '';
 
-      if (!file || !editor) {
+      if (files.length === 0) {
         return;
       }
 
-      setIsUploadingImage(true);
-
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch('/api/uploads/images', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const error = (await response.json().catch(() => null)) as { message?: string } | null;
-          throw new Error(error?.message ?? '画像のアップロードに失敗しました');
-        }
-
-        const result = (await response.json()) as { url: string };
-        editor.chain().focus().setImage({ src: result.url }).run();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '画像のアップロードに失敗しました';
-        alert(message);
-      } finally {
-        setIsUploadingImage(false);
-      }
+      void insertImagesFromFiles(files);
     },
-    [editor]
+    [insertImagesFromFiles]
   );
+
+  const handleDragEnter = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageFileTransfer(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingImage(true);
+  }, []);
+
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageFileTransfer(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setIsDraggingImage(true);
+  }, []);
+
+  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageFileTransfer(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+
+    if (dragDepthRef.current === 0) {
+      setIsDraggingImage(false);
+    }
+  }, []);
+
+  const handleDropZoneDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageFileTransfer(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingImage(false);
+  }, []);
 
 
   if (!editor) {
@@ -371,7 +484,13 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         </div>
       )}
       <main className={styles.main}>
-        <div className={styles.editorWrapper}>
+        <div
+          className={`${styles.editorWrapper} ${isDraggingImage ? styles.editorWrapperDragging : ''}`}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDropZoneDrop}
+        >
           <Toolbar>
             <ToolbarGroup>
               <Button data-style="ghost" 
@@ -431,12 +550,14 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/png,image/jpeg,image/gif"
+            accept="image/png,image/jpeg,image/gif,image/webp"
             className={styles.hiddenInput}
             onChange={handleImageSelection}
           />
 
           {isUploadingImage ? <p className={styles.uploadingNotice}>画像をアップロード中...</p> : null}
+          {isDraggingImage ? <p className={styles.dropNotice}>ここに画像をドロップしてアップロード</p> : null}
+          {/* {!isDraggingImage ? <p className={styles.dropHint}>画像をドラッグ&ドロップ、またはツールバーからアップロードできます</p> : null} */}
 
           <div className={styles.titleInputWrapper}>
             <input
@@ -454,4 +575,5 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       </main>
     </div>
   );
+}
 }
