@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
 from psycopg.rows import dict_row
+from schemas import TemplatePayload
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 MAX_IMAGE_EDGE = 600
@@ -107,6 +108,10 @@ def format_timestamp(value: datetime) -> str:
     return value.strftime("%Y-%m-%dT%H:%M:%S.%f")
 
 
+def serialize_template(row: dict) -> dict:
+    row["created_at"] = format_timestamp(row["created_at"])
+    row["updated_at"] = format_timestamp(row["updated_at"])
+    return row
 def resize_image_if_needed(content_type: str, file_bytes: bytes) -> bytes:
     """JPEG/PNG は最大辺 600px へ縮小し、GIF はそのまま保存する"""
     if content_type == "image/gif":
@@ -239,6 +244,97 @@ async def save_press_release(id: str, request: Request):
         )
 
 
+@app.get("/templates")
+async def list_templates():
+    """保存済みテンプレート一覧を取得する"""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, name, title, created_at, updated_at
+                    FROM press_release_templates
+                    ORDER BY updated_at DESC, id DESC
+                    """
+                )
+                rows = cur.fetchall()
+                return [serialize_template(row) for row in rows]
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "message": "Internal server error"}
+        )
+
+
+@app.post("/templates")
+async def create_template(payload: TemplatePayload):
+    """現在のプレスリリース内容をテンプレートとして保存する"""
+    try:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "MISSING_REQUIRED_FIELDS", "message": "Template name is required"}
+            )
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO press_release_templates (name, title, content)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, name, title, content, created_at, updated_at
+                    """,
+                    (name, payload.title, payload.content)
+                )
+                row = cur.fetchone()
+                conn.commit()
+                return serialize_template(row)
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "message": "Internal server error"}
+        )
+
+
+@app.get("/templates/{id}")
+async def get_template(id: str):
+    """テンプレート詳細を取得する"""
+    try:
+        template_id = parse_press_release_id(id)
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, name, title, content, created_at, updated_at
+                    FROM press_release_templates
+                    WHERE id = %s
+                    """,
+                    (template_id,)
+                )
+                row = cur.fetchone()
+
+                if row is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={"code": "NOT_FOUND", "message": "Template not found"}
+                    )
+
+                return serialize_template(row)
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "message": "Internal server error"}
+        )
 @app.post("/uploads/images", status_code=201)
 async def upload_image(request: Request, file: UploadFile = File(...)):
     """画像をアップロードし、必要に応じて縮小して公開URLを返す"""
