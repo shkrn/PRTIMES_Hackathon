@@ -15,8 +15,8 @@ import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
 import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
 import { Button } from '@/components/tiptap-ui-primitive/button';
-import Image from '@tiptap/extension-image'
-import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, LinkIcon, UploadIcon } from 'lucide-react';
+import Image from '@tiptap/extension-image';
+import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, LinkIcon } from 'lucide-react';
 
 
 const PRESS_RELEASE_ID = 1;
@@ -81,6 +81,8 @@ function extractImportableHtml(rawHtml: string): HtmlImportResult {
     content: bodyContent,
     title: importedTitle && importedTitle.length > 0 ? importedTitle : null,
   };
+}
+
 function getImageFiles(files: Iterable<File>): File[] {
   return Array.from(files).filter((file) => file.type.startsWith('image/'));
 }
@@ -152,10 +154,11 @@ export default function EditorPage() {
 function Editor({ initialTitle, initialContent }: { initialTitle: string; initialContent: object }) {
   const [title, setTitle] = useState(initialTitle);
   const [contentCount, setContentCount] = useState(0);
-  const [errorMessage, setErrorMessage] = useState(''); 
+  const [errorMessage, setErrorMessage] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const { isPending, mutate } = useSaveMutation();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const editorRef = useRef<TiptapEditor | null>(null);
@@ -326,7 +329,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   };
 
   const openImagePicker = useCallback(() => {
-    fileInputRef.current?.click();
+    imageFileInputRef.current?.click();
   }, []);
 
   const insertImageByUrl = useCallback(() => {
@@ -349,7 +352,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   }, [editor]);
 
   const openImportDialog = useCallback(() => {
-    fileInputRef.current?.click();
+    importFileInputRef.current?.click();
   }, []);
 
   const handleImportFile = useCallback(
@@ -389,7 +392,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   );
 
   const handleImageSelection = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files ?? []);
       event.target.value = '';
 
@@ -462,7 +465,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         </div>
         <div className={styles.headerActions}>
           <input
-            ref={fileInputRef}
+            ref={importFileInputRef}
             type="file"
             accept=".html,text/html"
             onChange={handleImportFile}
@@ -471,11 +474,12 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           <button type="button" onClick={openImportDialog} className={styles.importButton}>
             HTMLをインポート
           </button>
-          <button onClick={handleSave} className={styles.saveButton} disabled={isPending}>
+          <button onClick={handleSave} className={styles.saveButton} disabled={isPending || hasError}>
             {isPending ? '保存中...' : '保存'}
           </button>
         </div>
       </header>
+      {importStatus ? <div className={styles.importStatus}>{importStatus}</div> : null}
       {errorMessage && (
         <div className={styles.errorMessage}>
           {errorMessage.split('\n').map((msg, index) => (
@@ -548,7 +552,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           </Toolbar>
 
           <input
-            ref={fileInputRef}
+            ref={imageFileInputRef}
             type="file"
             accept="image/png,image/jpeg,image/gif"
             className={styles.hiddenInput}
@@ -575,5 +579,4 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       </main>
     </div>
   );
-}
 }
