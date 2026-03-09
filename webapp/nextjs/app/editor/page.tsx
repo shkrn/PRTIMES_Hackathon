@@ -1,5 +1,5 @@
 'use client';
-import { useState,useEffect } from 'react';
+import { useState, useCallback, useEffect} from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
@@ -16,6 +16,7 @@ import Underline from '@tiptap/extension-underline';
 import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
 import { Button } from '@/components/tiptap-ui-primitive/button';
 import { Spacer } from '@/components/tiptap-ui-primitive/spacer';
+import Image from '@tiptap/extension-image'
 import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, CodeIcon } from 'lucide-react';
 
 
@@ -129,6 +130,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         protocols: ['http', 'https'],
         HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
       }),
+      Image,
     ],
     content: initialContent,
     editorProps: {
@@ -171,6 +173,18 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       content: JSON.stringify(syncLinkHrefs(editor.getJSON() as JsonNode)),
     });
   };
+
+  
+
+  const addImage = useCallback(() => {
+    const url = window.prompt('URL');
+
+    if (url && editor) {
+      editor.chain().focus().setImage({ src: url }).run();
+    }
+  }, [editor]);
+
+
   if (!editor) {
     return null;
   }
@@ -235,7 +249,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
             <ToolbarSeparator />
 
             <ToolbarGroup>
-              <Button data-style="ghost">
+              <Button data-style="ghost"  onClick={addImage}>
                 <ImageIcon className="tiptap-button-icon" />
               </Button>
             </ToolbarGroup>
