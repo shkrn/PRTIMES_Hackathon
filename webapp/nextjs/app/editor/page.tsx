@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect} from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
@@ -106,6 +106,8 @@ export default function EditorPage() {
 
 function Editor({ initialTitle, initialContent }: { initialTitle: string; initialContent: object }) {
   const [title, setTitle] = useState(initialTitle);
+
+  const [contentCount, setContentCount] = useState(0);
   const { isPending, mutate } = useSaveMutation();
 
   const editor = useEditor({
@@ -148,7 +150,21 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       },
     },
     immediatelyRender: false,
+    onUpdate: ({ editor }) => {
+      // エディターの内容が更新されたときに文字数を更新
+      setContentCount(editor.getText().length);
+      console.log("onUpdate");
+    },
   });
+  // 初期表示時に文字数を設定
+  useEffect(() => {
+    if (editor) {
+      setContentCount(editor.getText().length);
+    }
+  }, [editor]);
+    // titleとcontentの文字数を計算
+  const titleCount = title.length;
+  
 
   const handleSave = () => {
     if (!editor) return;
@@ -177,6 +193,9 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>プレスリリースエディター</h1>
+        <div className={styles.charCounter}>
+          タイトル: {titleCount}文字 / 本文: {contentCount}文字
+        </div>
         <button onClick={handleSave} className={styles.saveButton} disabled={isPending}>
           {isPending ? '保存中...' : '保存'}
         </button>
