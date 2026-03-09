@@ -22,6 +22,9 @@ import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIc
 
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
+// 文字数制限の定数
+const MAX_TITLE_LENGTH = 100;
+const MAX_CONTENT_LENGTH = 500;
 
 type JsonNode = Record<string, unknown>;
 
@@ -108,6 +111,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const [title, setTitle] = useState(initialTitle);
 
   const [contentCount, setContentCount] = useState(0);
+  const [errorMessage, setErrorMessage] = useState(''); 
   const { isPending, mutate } = useSaveMutation();
 
   const editor = useEditor({
@@ -154,6 +158,9 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       // エディターの内容が更新されたときに文字数を更新
       setContentCount(editor.getText().length);
       console.log("onUpdate");
+      if (errorMessage) {
+        setErrorMessage('');
+      }
     },
   });
   // 初期表示時に文字数を設定
@@ -164,15 +171,50 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   }, [editor]);
     // titleとcontentの文字数を計算
   const titleCount = title.length;
-  
+  // タイトルが変更されたときにエラーメッセージをクリア
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTitle(e.target.value);
+    if (errorMessage) {
+      setErrorMessage('');
+    }
+  };
+  // バリデーション関数
+  const validateBeforeSave = (): boolean => {
+    const errors: string[] = [];
+
+    if (titleCount > MAX_TITLE_LENGTH) {
+      errors.push(`タイトルが${MAX_TITLE_LENGTH}文字を超えています（現在${titleCount}文字）`);
+    }
+
+    if (contentCount > MAX_CONTENT_LENGTH) {
+      errors.push(`本文が${MAX_CONTENT_LENGTH}文字を超えています（現在${contentCount}文字）`);
+    }
+
+    if (errors.length > 0) {
+      setErrorMessage(errors.join('\n'));
+      return false;
+    }
+
+    return true;
+  };
+
 
   const handleSave = () => {
     if (!editor) return;
+
+    // バリデーションチェック
+    if (!validateBeforeSave()) {
+      return;
+    }
+
+    // エラーがなければ保存
+    setErrorMessage('');
     mutate({
       title,
       content: JSON.stringify(syncLinkHrefs(editor.getJSON() as JsonNode)),
     });
   };
+
 
   
 
@@ -188,18 +230,28 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   if (!editor) {
     return null;
   }
+  const isTitleOverLimit = titleCount > MAX_TITLE_LENGTH;
+  const isContentOverLimit = contentCount > MAX_CONTENT_LENGTH;
+  const hasError = isTitleOverLimit || isContentOverLimit;
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>プレスリリースエディター</h1>
         <div className={styles.charCounter}>
-          タイトル: {titleCount}文字 / 本文: {contentCount}文字
+          タイトル: {titleCount}/{MAX_TITLE_LENGTH}文字 / 本文: {contentCount}/{MAX_CONTENT_LENGTH}文字
         </div>
         <button onClick={handleSave} className={styles.saveButton} disabled={isPending}>
           {isPending ? '保存中...' : '保存'}
         </button>
       </header>
+      {errorMessage && (
+        <div className={styles.errorMessage}>
+          {errorMessage.split('\n').map((msg, index) => (
+            <div key={index}>{msg}</div>
+          ))}
+        </div>
+      )}
       <main className={styles.main}>
         <div className={styles.editorWrapper}>
           <Toolbar>
