@@ -6,6 +6,7 @@ import Document from '@tiptap/extension-document';
 import Heading from '@tiptap/extension-heading';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
+import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list';
 import type { PressRelease } from '@/lib/types';
 import styles from './page.module.css';
 import Bold from '@tiptap/extension-bold';
@@ -85,7 +86,7 @@ interface EditorProps {
 function Editor({ initialTitle, initialContent }: EditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const editor = useEditor({
-    extensions: [Document, Heading, Paragraph, Text, Bold, Italic, Underline],
+    extensions: [Document, Heading, Paragraph, Text, Bold, Italic, Underline, BulletList, OrderedList, ListItem],
     content: initialContent,
     immediatelyRender: false
   });
