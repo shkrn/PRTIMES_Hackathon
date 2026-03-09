@@ -141,10 +141,16 @@ function useSaveMutation() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!response.ok) throw new Error('保存に失敗しました');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error('保存に失敗しました');
+      }
       return response.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: () => {
+      alert('保存しました');
+      queryClient.invalidateQueries({ queryKey });
+    },
     onError: (error: Error) => alert(`エラー: ${error.message}`),
   });
 }
@@ -189,6 +195,7 @@ function useLoadTemplateMutation() {
 }
 
 export default function EditorPage() {
+  console.log("initial render");
   const { data, isPending, isError } = usePressReleaseQuery();
 
   if (isPending) {
@@ -388,9 +395,9 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     if (!editor) return;
 
     // バリデーションチェック
-    if (!validateBeforeSave()) {
-      return;
-    }
+    // if (!validateBeforeSave()) {
+    //   return;
+    // }
 
     // エラーがなければ保存
     setErrorMessage('');
