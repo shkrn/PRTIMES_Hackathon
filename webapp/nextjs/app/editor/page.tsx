@@ -24,6 +24,7 @@ const queryKey = ['press-release', PRESS_RELEASE_ID];
 // 文字数制限の定数
 const MAX_TITLE_LENGTH = 100;
 const MAX_CONTENT_LENGTH = 500;
+const API_BASE_URL = 'http://localhost:8080'; // PythonサーバーのURL
 
 type JsonNode = Record<string, unknown>;
 
@@ -98,20 +99,27 @@ function useSaveMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { title: string; content: string }) => {
-      const response = await fetch(`/api/press-releases/${PRESS_RELEASE_ID}`, {
+      const response = await fetch(`${API_BASE_URL}/press-releases/${PRESS_RELEASE_ID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!response.ok) throw new Error('保存に失敗しました');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error('保存に失敗しました');
+      }
       return response.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: () => {
+      alert('保存しました');
+      queryClient.invalidateQueries({ queryKey });
+    },
     onError: (error: Error) => alert(`エラー: ${error.message}`),
   });
 }
 
 export default function EditorPage() {
+  console.log("initial render");
   const { data, isPending, isError } = usePressReleaseQuery();
 
   if (isPending) {
@@ -226,9 +234,9 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     if (!editor) return;
 
     // バリデーションチェック
-    if (!validateBeforeSave()) {
-      return;
-    }
+    // if (!validateBeforeSave()) {
+    //   return;
+    // }
 
     // エラーがなければ保存
     setErrorMessage('');
@@ -391,7 +399,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={handleTitleChange}
               placeholder="タイトルを入力してください"
               className={styles.titleInput}
             />

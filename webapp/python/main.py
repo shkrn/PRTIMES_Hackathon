@@ -224,3 +224,39 @@ async def http_exception_handler(_request, exc: HTTPException):
 async def root():
     """ヘルスチェックエンドポイント"""
     return {"message": "Press Release Editor API is running"}
+async def parse_save_request(request: Request) -> tuple[str, str]:
+    """POSTリクエストボディを検証し、文字数制限を適用する"""
+    body = await request.body()
+
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as err:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_JSON", "message": "Invalid JSON"},
+        ) from err
+
+    if not isinstance(payload, dict):
+        payload = {}
+
+    title = payload.get("title")
+    content = payload.get("content")
+
+    # 型チェックと必須チェック
+    if not isinstance(title, str) or not isinstance(content, str):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "MISSING_REQUIRED_FIELDS", "message": "Title and content are required"},
+        )
+
+    # 文字数バリデーションを追加
+    if len(title) > 100 or len(content) > 500:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "TEXT_TOO_LONG",
+                "message": "Title must be 100 characters or less and content must be 500 characters or less"
+            },
+        )
+
+    return title, content
