@@ -550,7 +550,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
+            accept="image/png,image/jpeg,image/gif"
             className={styles.hiddenInput}
             onChange={handleImageSelection}
           />
