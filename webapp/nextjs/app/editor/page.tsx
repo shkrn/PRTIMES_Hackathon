@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
 import Document from '@tiptap/extension-document';
@@ -105,6 +105,8 @@ export default function EditorPage() {
 
 function Editor({ initialTitle, initialContent }: { initialTitle: string; initialContent: object }) {
   const [title, setTitle] = useState(initialTitle);
+
+  const [contentCount, setContentCount] = useState(0);
   const { isPending, mutate } = useSaveMutation();
 
   const editor = useEditor({
@@ -146,10 +148,21 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       },
     },
     immediatelyRender: false,
+    onUpdate: ({ editor }) => {
+      // エディターの内容が更新されたときに文字数を更新
+      setContentCount(editor.getText().length);
+      console.log("onUpdate");
+    },
   });
+  // 初期表示時に文字数を設定
+  useEffect(() => {
+    if (editor) {
+      setContentCount(editor.getText().length);
+    }
+  }, [editor]);
     // titleとcontentの文字数を計算
   const titleCount = title.length;
-  const contentCount = editor ? editor.getText().length : 0;
+  
 
   const handleSave = () => {
     if (!editor) return;
