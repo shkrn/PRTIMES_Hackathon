@@ -80,6 +80,36 @@
   min-height: 400px;
 }
 
+.editorWrapperDragging {
+  border-color: #007bff;
+  box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.12);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.uploadingNotice {
+  margin: 0.75rem 0 0;
+  color: #495057;
+  font-size: 0.95rem;
+}
+
+.dropNotice,
+.dropHint {
+  margin: 0.75rem 0 0;
+  font-size: 0.95rem;
+}
+
+.dropNotice {
+  color: #007bff;
+  font-weight: 600;
+}
+
+.dropHint {
+  color: #6c757d;
+}
+
 .titleInputWrapper {
   margin-bottom: 1.5rem;
 }
@@ -125,6 +155,14 @@
 
 .tiptap a:hover {
   color: #1e40af;
+}
+
+.tiptap img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem 0;
+  border-radius: 8px;
 }
 
 .loading,
