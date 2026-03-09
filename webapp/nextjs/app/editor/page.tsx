@@ -15,8 +15,8 @@ import Italic from '@tiptap/extension-italic';
 import Underline from '@tiptap/extension-underline';
 import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
 import { Button } from '@/components/tiptap-ui-primitive/button';
-import Image from '@tiptap/extension-image';
-import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, UploadIcon } from 'lucide-react';
+import Image from '@tiptap/extension-image'
+import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, LinkIcon, UploadIcon } from 'lucide-react';
 
 
 const PRESS_RELEASE_ID = 1;
@@ -140,6 +140,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const { isPending, mutate } = useSaveMutation();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -194,13 +195,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   });
 
   const titleCount = title.length;
-  // タイトルが変更されたときにエラーメッセージをクリア
-  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setTitle(e.target.value);
-    if (errorMessage) {
-      setErrorMessage('');
-    }
-  };
   // バリデーション関数
   const validateBeforeSave = (): boolean => {
     const errors: string[] = [];
@@ -238,15 +232,27 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     });
   };
 
+  const openImagePicker = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
-  
-
-  const addImage = useCallback(() => {
-    const url = window.prompt('URL');
-
-    if (url && editor) {
-      editor.chain().focus().setImage({ src: url }).run();
+  const insertImageByUrl = useCallback(() => {
+    if (!editor) {
+      return;
     }
+
+    const value = window.prompt('画像URLを入力してください');
+    if (!value) {
+      return;
+    }
+
+    const src = normalizeUrl(value);
+    if (!src) {
+      alert('有効な画像URLを入力してください');
+      return;
+    }
+
+    editor.chain().focus().setImage({ src }).run();
   }, [editor]);
 
   const openImportDialog = useCallback(() => {
@@ -284,6 +290,43 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       } catch (error) {
         const message = error instanceof Error ? error.message : 'HTMLのインポートに失敗しました';
         setImportStatus(message);
+      }
+    },
+    [editor]
+  );
+
+  const handleImageSelection = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+
+      if (!file || !editor) {
+        return;
+      }
+
+      setIsUploadingImage(true);
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/uploads/images', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const error = (await response.json().catch(() => null)) as { message?: string } | null;
+          throw new Error(error?.message ?? '画像のアップロードに失敗しました');
+        }
+
+        const result = (await response.json()) as { url: string };
+        editor.chain().focus().setImage({ src: result.url }).run();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '画像のアップロードに失敗しました';
+        alert(message);
+      } finally {
+        setIsUploadingImage(false);
       }
     },
     [editor]
@@ -376,16 +419,24 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
             <ToolbarSeparator />
 
             <ToolbarGroup>
-              <Button data-style="ghost"  onClick={addImage}>
+              <Button data-style="ghost" onClick={openImagePicker} disabled={isUploadingImage}>
                 <ImageIcon className="tiptap-button-icon" />
               </Button>
-              <Button data-style="ghost" onClick={openImportDialog}>
-                <UploadIcon className="tiptap-button-icon" />
+              <Button data-style="ghost" onClick={insertImageByUrl} disabled={isUploadingImage}>
+                <LinkIcon className="tiptap-button-icon" />
               </Button>
             </ToolbarGroup>
           </Toolbar>
 
-          {importStatus ? <p className={styles.importStatus}>{importStatus}</p> : null}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif"
+            className={styles.hiddenInput}
+            onChange={handleImageSelection}
+          />
+
+          {isUploadingImage ? <p className={styles.uploadingNotice}>画像をアップロード中...</p> : null}
 
           <div className={styles.titleInputWrapper}>
             <input

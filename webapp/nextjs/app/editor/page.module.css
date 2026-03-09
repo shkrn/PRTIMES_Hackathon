@@ -80,6 +80,16 @@
   min-height: 400px;
 }
 
+.hiddenInput {
+  display: none;
+}
+
+.uploadingNotice {
+  margin: 0.75rem 0 0;
+  color: #495057;
+  font-size: 0.95rem;
+}
+
 .titleInputWrapper {
   margin-bottom: 1.5rem;
 }
@@ -125,6 +135,14 @@
 
 .tiptap a:hover {
   color: #1e40af;
+}
+
+.tiptap img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem 0;
+  border-radius: 8px;
 }
 
 .loading,

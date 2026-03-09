@@ -224,3 +224,4 @@ async def http_exception_handler(_request, exc: HTTPException):
 async def root():
     """ヘルスチェックエンドポイント"""
     return {"message": "Press Release Editor API is running"}
+
