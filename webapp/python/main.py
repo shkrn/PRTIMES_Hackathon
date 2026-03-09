@@ -3,15 +3,30 @@ Press Release Editor - FastAPI Implementation
 
 FastAPI + psycopg を使用したプレスリリースAPI実装
 """
-import os
 import json
+import os
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
 import psycopg
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps
 from psycopg.rows import dict_row
 from schemas import TemplatePayload
+
+MAX_FILE_SIZE = 5 * 1024 * 1024
+MAX_IMAGE_EDGE = 600
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+}
+UPLOAD_DIR = Path(__file__).resolve().parent / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # FastAPIアプリケーションの初期化
 app = FastAPI(
@@ -97,6 +112,27 @@ def serialize_template(row: dict) -> dict:
     row["created_at"] = format_timestamp(row["created_at"])
     row["updated_at"] = format_timestamp(row["updated_at"])
     return row
+def resize_image_if_needed(content_type: str, file_bytes: bytes) -> bytes:
+    """JPEG/PNG は最大辺 600px へ縮小し、GIF はそのまま保存する"""
+    if content_type == "image/gif":
+        return file_bytes
+
+    with Image.open(BytesIO(file_bytes)) as image:
+        image = ImageOps.exif_transpose(image)
+        width, height = image.size
+
+        if max(width, height) <= MAX_IMAGE_EDGE:
+            return file_bytes
+
+        image.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE))
+
+        if content_type == "image/jpeg" and image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+
+        output = BytesIO()
+        save_format = "JPEG" if content_type == "image/jpeg" else "PNG"
+        image.save(output, format=save_format, optimize=True)
+        return output.getvalue()
 
 
 # エンドポイント
@@ -299,6 +335,52 @@ async def get_template(id: str):
             status_code=500,
             detail={"code": "INTERNAL_ERROR", "message": "Internal server error"}
         )
+@app.post("/uploads/images", status_code=201)
+async def upload_image(request: Request, file: UploadFile = File(...)):
+    """画像をアップロードし、必要に応じて縮小して公開URLを返す"""
+    content_type = file.content_type or ""
+
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "JPEG、PNG、GIFのみアップロードできます"},
+        )
+
+    try:
+        file_bytes = await file.read()
+
+        if not file_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "画像ファイルが必要です"},
+            )
+
+        if len(file_bytes) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "画像サイズは 5MB 以下にしてください"},
+            )
+
+        try:
+            output_bytes = resize_image_if_needed(content_type, file_bytes)
+        except OSError as err:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "不正な画像形式です"},
+            ) from err
+
+        extension = ALLOWED_IMAGE_TYPES[content_type]
+        file_name = f"{uuid4()}.{extension}"
+        file_path = UPLOAD_DIR / file_name
+        file_path.write_bytes(output_bytes)
+
+        base_url = str(request.base_url).rstrip("/")
+        return {"url": f"{base_url}/uploads/{file_name}"}
+    finally:
+        await file.close()
+
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 # カスタム例外ハンドラー

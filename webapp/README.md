@@ -35,6 +35,10 @@ curl -X POST http://localhost:8080/press-releases/1 \
     "title": "新しいタイトル",
     "content": "{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"テキスト内容\"}]}]}"
   }'
+
+# 画像アップロード
+curl -X POST http://localhost:8080/uploads/images \
+  -F 'file=@/path/to/image.png'
 ```
 
 ### 3. 停止
@@ -115,6 +119,26 @@ docker compose up -d
   "updated_at": "2026-02-16T15:30:00.123456"
 }
 ```
+
+### POST /uploads/images
+
+画像をアップロードします。対応形式は JPEG、PNG、GIF、最大サイズは 5MB です。JPEG/PNG は最大辺 600px に縮小されます。
+
+**リクエスト:**
+
+- `multipart/form-data`
+- フィールド名: `file`
+
+**レスポンス例:**
+```json
+{
+  "url": "http://localhost:8080/uploads/01234567-89ab-cdef-0123-456789abcdef.png"
+}
+```
+
+### GET /uploads/:fileName
+
+アップロード済み画像を返します。Next.js フロントエンドはこの URL をそのまま画像参照に使用します。
 
 ## データベース
 

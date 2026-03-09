@@ -32,7 +32,13 @@ docker compose up -d db
 npm run dev
 ```
 
-起動後、`http://localhost:3000` を開いてください。
+必要に応じて `.env.local` にバックエンド API の接続先を指定してください。
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
+```
+
+起動後、`http://localhost:3000` を開いてください。Next.js はフロントエンドのみを担当し、API は Python バックエンドを直接呼び出します。
 
 ## npmコマンド一覧
 
@@ -43,7 +49,9 @@ npm run dev
 
 ## 連携API
 
-- `GET /press-releases/:id`
-- `POST /press-releases/:id`
+- `GET http://localhost:8080/press-releases/:id`
+- `POST http://localhost:8080/press-releases/:id`
+- `POST http://localhost:8080/uploads/images`
+- `GET http://localhost:8080/uploads/:fileName`
 
 API仕様は [webapp/README.md](../README.md) を参照してください。
