@@ -1,5 +1,4 @@
 'use client';
-
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -9,6 +8,10 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import type { PressRelease } from '@/lib/types';
 import styles from './page.module.css';
+import Bold from '@tiptap/extension-bold';
+import Italic from '@tiptap/extension-italic';
+import Underline from '@tiptap/extension-underline';
+
 
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
@@ -82,7 +85,7 @@ interface EditorProps {
 function Editor({ initialTitle, initialContent }: EditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const editor = useEditor({
-    extensions: [Document, Heading, Paragraph, Text],
+    extensions: [Document, Heading, Paragraph, Text, Bold, Italic, Underline],
     content: initialContent,
     immediatelyRender: false
   });
@@ -97,6 +100,9 @@ function Editor({ initialTitle, initialContent }: EditorProps) {
       content: JSON.stringify(editor.getJSON()),
     });
   };
+  if (!editor) {
+    return null;
+  }
 
   return (
     <div className={styles.container}>
@@ -109,6 +115,29 @@ function Editor({ initialTitle, initialContent }: EditorProps) {
 
       <main className={styles.main}>
         <div className={styles.editorWrapper}>
+          <div className={styles.toolbar}>
+              <button
+                onClick={() => editor.chain().focus().toggleBold().run()}
+                disabled={!editor.can().chain().focus().toggleBold().run()}
+                className={editor.isActive('bold') ? styles.isActive : ''}
+              >
+                B
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleItalic().run()}
+                disabled={!editor.can().chain().focus().toggleItalic().run()}
+                className={editor.isActive('italic') ? styles.isActive : ''}
+              >
+                i
+              </button>
+              <button
+                onClick={() => editor.chain().focus().toggleUnderline().run()}
+                disabled={!editor.can().chain().focus().toggleUnderline().run()}
+                className={editor.isActive('underline') ? styles.isActive : ''}
+              >
+                U
+              </button>
+            </div>
           <div className={styles.titleInputWrapper}>
             <input
               type="text"
@@ -118,6 +147,8 @@ function Editor({ initialTitle, initialContent }: EditorProps) {
               className={styles.titleInput}
             />
           </div>
+
+
           <EditorContent editor={editor} />
         </div>
       </main>
