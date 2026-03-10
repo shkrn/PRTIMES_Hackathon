@@ -1,13 +1,15 @@
 'use client';
-import { useState, useCallback, useRef, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef, useEffect, type ChangeEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent, type Editor as TiptapEditor } from '@tiptap/react';
+import { toast } from 'sonner';
 import Document from '@tiptap/extension-document';
 import Heading from '@tiptap/extension-heading';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list';
 import Link from '@tiptap/extension-link';
+import History from '@tiptap/extension-history';
 import type {
   PressRelease,
   PressReleaseTemplate,
@@ -21,7 +23,17 @@ import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-
 import { Button } from '@/components/tiptap-ui-primitive/button';
 import Image from '@tiptap/extension-image';
 
-import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, LinkIcon } from 'lucide-react';
+import {
+  BoldIcon,
+  ItalicIcon,
+  UnderlineIcon,
+  ListIcon,
+  ListOrderedIcon,
+  ImageIcon,
+  LinkIcon,
+  RotateCcwIcon,
+  RotateCwIcon,
+} from 'lucide-react';
 import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
 import { EditorHelpGuide } from './_components/editor-help-guide';
 
@@ -141,13 +153,11 @@ function useSaveMutation() {
         body: JSON.stringify(data),
       });
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
         throw new Error('保存に失敗しました');
       }
       return response.json();
     },
     onSuccess: () => {
-      alert('保存しました');
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (error: Error) => alert(`エラー: ${error.message}`),
@@ -303,6 +313,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       Heading,
       Paragraph,
       Text,
+      History,
       Bold,
       Italic,
       Underline,
@@ -371,7 +382,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     }
   };
 
-  // バリデーション関数
   const validateBeforeSave = (): boolean => {
     const errors: string[] = [];
 
@@ -393,21 +403,36 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
 
   editorRef.current = editor;
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     if (!editor) return;
-
-    // バリデーションチェック
-    // if (!validateBeforeSave()) {
-    //   return;
-    // }
 
     // エラーがなければ保存
     setErrorMessage('');
     mutate({
       title,
       content: JSON.stringify(syncLinkHrefs(editor.getJSON() as JsonNode)),
+    }, {
+      onSuccess: () => {
+        toast.success('保存しました');
+      },
     });
-  };
+  }, [editor, mutate, title]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') {
+        return;
+      }
+
+      event.preventDefault();
+      handleSave();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleSave]);
 
   const handleSaveTemplate = () => {
     if (!editor) return;
@@ -687,10 +712,35 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         >
           <Toolbar>
             <ToolbarGroup>
+              <Button
+                data-style="ghost"
+                onClick={() => editor.chain().focus().undo().run()}
+                disabled={!editor.can().chain().focus().undo().run()}
+                shortcutKeys="mod+z"
+                tooltip="元に戻す (Cmd/Ctrl+Z)"
+              >
+                <RotateCcwIcon className="tiptap-button-icon" />
+              </Button>
+              <Button
+                data-style="ghost"
+                onClick={() => editor.chain().focus().redo().run()}
+                disabled={!editor.can().chain().focus().redo().run()}
+                shortcutKeys="shift+mod+z"
+                tooltip="やり直し (Shift+Cmd/Ctrl+Z)"
+              >
+                <RotateCwIcon className="tiptap-button-icon" />
+              </Button>
+            </ToolbarGroup>
+
+            <ToolbarSeparator />
+
+            <ToolbarGroup>
               <Button data-style="ghost" 
                   onClick={() => editor.chain().focus().toggleBold().run()}
                   disabled={!editor.can().chain().focus().toggleBold().run()}
                   className={editor.isActive('bold') ? styles.isActive : ''}
+                  shortcutKeys="mod+b"
+                  tooltip="太字"
                 >
                 <BoldIcon className="tiptap-button-icon" />
               </Button>
@@ -698,6 +748,8 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
                   onClick={() => editor.chain().focus().toggleItalic().run()}
                   disabled={!editor.can().chain().focus().toggleItalic().run()}
                   className={editor.isActive('italic') ? styles.isActive : ''}
+                  shortcutKeys="mod+i"
+                  tooltip="斜体"
                 >
                 <ItalicIcon className="tiptap-button-icon" />
               </Button>
@@ -705,6 +757,8 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
                   onClick={() => editor.chain().focus().toggleUnderline().run()}
                   disabled={!editor.can().chain().focus().toggleUnderline().run()}
                   className={editor.isActive('underline') ? styles.isActive : ''}
+                  shortcutKeys="mod+u"
+                  tooltip="下線"
                 >
                 <UnderlineIcon className="tiptap-button-icon" />
               </Button>
@@ -717,6 +771,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
                   onClick={() => editor.chain().focus().toggleBulletList().run()}
                   disabled={!editor.can().chain().focus().toggleBulletList().run()}
                   className={editor.isActive('bulletList') ? styles.isActive : ''}
+                  tooltip="箇条書き"
                 >
                 <ListIcon className="tiptap-button-icon" />
               </Button>
@@ -724,6 +779,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
                   onClick={() => editor.chain().focus().toggleOrderedList().run()}
                   disabled={!editor.can().chain().focus().toggleOrderedList().run()}
                   className={editor.isActive('orderedList') ? styles.isActive : ''}
+                  tooltip="番号付きリスト"
                 >
                 <ListOrderedIcon className="tiptap-button-icon" />
               </Button>
@@ -732,10 +788,10 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
             <ToolbarSeparator />
 
             <ToolbarGroup>
-              <Button data-style="ghost" onClick={openImagePicker} disabled={isUploadingImage}>
+              <Button data-style="ghost" onClick={openImagePicker} disabled={isUploadingImage} tooltip="画像をアップロード">
                 <ImageIcon className="tiptap-button-icon" />
               </Button>
-              <Button data-style="ghost" onClick={insertImageByUrl} disabled={isUploadingImage}>
+              <Button data-style="ghost" onClick={insertImageByUrl} disabled={isUploadingImage} tooltip="画像URLを挿入">
                 <LinkIcon className="tiptap-button-icon" />
               </Button>
             </ToolbarGroup>
