@@ -23,8 +23,7 @@ import Image from '@tiptap/extension-image';
 
 import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, LinkIcon } from 'lucide-react';
 import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
-
-
+import { EditorHelpGuide } from './_components/editor-help-guide';
 
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
@@ -225,6 +224,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const [errorMessage, setErrorMessage] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [templateStatus, setTemplateStatus] = useState<string | null>(null);
+  const [editorDocument, setEditorDocument] = useState<JsonNode>(initialContent as JsonNode);
   const { isPending, mutate } = useSaveMutation();
   const { data: templates = [], isPending: isTemplateListPending } = useTemplateListQuery();
   const createTemplateMutation = useCreateTemplateMutation();
@@ -351,9 +351,11 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     immediatelyRender: false,
     onCreate: ({ editor }) => {
       setContentCount(editor.getText().length);
+      setEditorDocument(editor.getJSON() as JsonNode);
     },
     onUpdate: ({ editor }) => {
       setContentCount(editor.getText().length);
+      setEditorDocument(editor.getJSON() as JsonNode);
       console.log("onUpdate");
       if (errorMessage) {
         setErrorMessage('');
@@ -586,7 +588,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     setIsDraggingImage(false);
   }, []);
 
-
   if (!editor) {
     return null;
   }
@@ -600,6 +601,14 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           タイトル: {titleCount}/{MAX_TITLE_LENGTH}文字 / 本文: {contentCount}/{MAX_CONTENT_LENGTH}文字
         </div>
         <div className={styles.headerActions}>
+          <EditorHelpGuide
+            title={title}
+            titleCount={titleCount}
+            contentCount={contentCount}
+            editorDocument={editorDocument}
+            maxTitleLength={MAX_TITLE_LENGTH}
+            maxContentLength={MAX_CONTENT_LENGTH}
+          />
           <input
             ref={importFileInputRef}
             type="file"
