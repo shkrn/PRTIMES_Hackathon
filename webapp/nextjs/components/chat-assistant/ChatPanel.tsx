@@ -196,25 +196,31 @@ export function ChatPanel({
           ))}
 
           {followUpQuestions.length > 0 ? (
-            <div className={styles.metaBlock}>
-              <p className={styles.metaTitle}>追加で確認したいこと</p>
+            <details className={styles.metaBlock} open>
+              <summary className={styles.metaSummary}>
+                <span className={styles.metaTitle}>追加で確認したいこと</span>
+                <span className={styles.metaCount}>{followUpQuestions.length}件</span>
+              </summary>
               <ul className={styles.metaList}>
                 {followUpQuestions.map((question) => (
                   <li key={question}>{question}</li>
                 ))}
               </ul>
-            </div>
+            </details>
           ) : null}
 
           {missingFields.length > 0 ? (
-            <div className={styles.metaBlock}>
-              <p className={styles.metaTitle}>不足している項目</p>
-              <ul className={styles.metaList}>
+            <details className={`${styles.metaBlock} ${styles.compactMetaBlock}`}>
+              <summary className={styles.metaSummary}>
+                <span className={styles.metaTitle}>不足している項目</span>
+                <span className={styles.metaCount}>{missingFields.length}件</span>
+              </summary>
+              <ul className={`${styles.metaList} ${styles.compactMetaList}`}>
                 {missingFields.map((field) => (
                   <li key={field}>{field}</li>
                 ))}
               </ul>
-            </div>
+            </details>
           ) : null}
 
           {draft ? (
