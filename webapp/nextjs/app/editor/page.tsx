@@ -956,52 +956,55 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
           >
             <Toolbar>
               <ToolbarGroup>
-              <Button
-                data-style="ghost"
-                onClick={() => editor.chain().focus().undo().run()}
-                disabled={!editor.can().chain().focus().undo().run()}
-                shortcutKeys="mod+z"
-                tooltip="元に戻す (Cmd/Ctrl+Z)"
-              >
-                <RotateCcwIcon className="tiptap-button-icon" />
-              </Button>
-              <Button
-                data-style="ghost"
-                onClick={() => editor.chain().focus().redo().run()}
-                disabled={!editor.can().chain().focus().redo().run()}
-                shortcutKeys="shift+mod+z"
-                tooltip="やり直し (Shift+Cmd/Ctrl+Z)"
-              >
-                <RotateCwIcon className="tiptap-button-icon" />
-              </Button>
-            </ToolbarGroup>
+                <Button
+                  data-style="ghost"
+                  onClick={() => editor.chain().focus().undo().run()}
+                  disabled={!editor.can().chain().focus().undo().run()}
+                  shortcutKeys="mod+z"
+                  tooltip="元に戻す (Cmd/Ctrl+Z)"
+                >
+                  <RotateCcwIcon className="tiptap-button-icon" />
+                </Button>
+                <Button
+                  data-style="ghost"
+                  onClick={() => editor.chain().focus().redo().run()}
+                  disabled={!editor.can().chain().focus().redo().run()}
+                  shortcutKeys="shift+mod+z"
+                  tooltip="やり直し (Shift+Cmd/Ctrl+Z)"
+                >
+                  <RotateCwIcon className="tiptap-button-icon" />
+                </Button>
+              </ToolbarGroup>
 
-            <ToolbarSeparator />
+              <ToolbarSeparator />
 
-            <ToolbarGroup>
-                <Button data-style="ghost"
-                    onClick={() => editor.chain().focus().toggleBold().run()}
-                    disabled={!editor.can().chain().focus().toggleBold().run()}
-                    className={editor.isActive('bold') ? styles.isActive : ''}
-                    shortcutKeys="mod+b"
+              <ToolbarGroup>
+                <Button
+                  data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                  disabled={!editor.can().chain().focus().toggleBold().run()}
+                  className={editor.isActive('bold') ? styles.isActive : ''}
+                  shortcutKeys="mod+b"
                   tooltip="太字"
                 >
                   <BoldIcon className="tiptap-button-icon" />
                 </Button>
-                <Button data-style="ghost"
-                    onClick={() => editor.chain().focus().toggleItalic().run()}
-                    disabled={!editor.can().chain().focus().toggleItalic().run()}
-                    className={editor.isActive('italic') ? styles.isActive : ''}
-                    shortcutKeys="mod+i"
+                <Button
+                  data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                  disabled={!editor.can().chain().focus().toggleItalic().run()}
+                  className={editor.isActive('italic') ? styles.isActive : ''}
+                  shortcutKeys="mod+i"
                   tooltip="斜体"
                 >
                   <ItalicIcon className="tiptap-button-icon" />
                 </Button>
-                <Button data-style="ghost"
-                    onClick={() => editor.chain().focus().toggleUnderline().run()}
-                    disabled={!editor.can().chain().focus().toggleUnderline().run()}
-                    className={editor.isActive('underline') ? styles.isActive : ''}
-                    shortcutKeys="mod+u"
+                <Button
+                  data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleUnderline().run()}
+                  disabled={!editor.can().chain().focus().toggleUnderline().run()}
+                  className={editor.isActive('underline') ? styles.isActive : ''}
+                  shortcutKeys="mod+u"
                   tooltip="下線"
                 >
                   <UnderlineIcon className="tiptap-button-icon" />
@@ -1010,34 +1013,48 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
 
               <ToolbarSeparator />
 
-            <ToolbarGroup>
-              <Button data-style="ghost"
+              <ToolbarGroup>
+                <Button
+                  data-style="ghost"
                   onClick={() => editor.chain().focus().toggleBulletList().run()}
                   disabled={!editor.can().chain().focus().toggleBulletList().run()}
                   className={editor.isActive('bulletList') ? styles.isActive : ''}
+                  tooltip="箇条書き"
                 >
-                <ListIcon className="tiptap-button-icon" />
-              </Button>
-              <Button data-style="ghost"
+                  <ListIcon className="tiptap-button-icon" />
+                </Button>
+                <Button
+                  data-style="ghost"
                   onClick={() => editor.chain().focus().toggleOrderedList().run()}
                   disabled={!editor.can().chain().focus().toggleOrderedList().run()}
                   className={editor.isActive('orderedList') ? styles.isActive : ''}
+                  tooltip="番号付きリスト"
                 >
-                <ListOrderedIcon className="tiptap-button-icon" />
-              </Button>
-            </ToolbarGroup>
+                  <ListOrderedIcon className="tiptap-button-icon" />
+                </Button>
+              </ToolbarGroup>
 
               <ToolbarSeparator />
 
-            <ToolbarGroup>
-              <Button data-style="ghost" onClick={openImagePicker} disabled={isUploadingImage}>
-                <ImageIcon className="tiptap-button-icon" />
-              </Button>
-              <Button data-style="ghost" onClick={insertImageByUrl} disabled={isUploadingImage}>
-                <LinkIcon className="tiptap-button-icon" />
-              </Button>
-            </ToolbarGroup>
-          </Toolbar>
+              <ToolbarGroup>
+                <Button
+                  data-style="ghost"
+                  onClick={openImagePicker}
+                  disabled={isUploadingImage}
+                  tooltip="画像を挿入"
+                >
+                  <ImageIcon className="tiptap-button-icon" />
+                </Button>
+                <Button
+                  data-style="ghost"
+                  onClick={insertImageByUrl}
+                  disabled={isUploadingImage}
+                  tooltip="URLから画像を挿入"
+                >
+                  <LinkIcon className="tiptap-button-icon" />
+                </Button>
+              </ToolbarGroup>
+            </Toolbar>
 
             <input
               ref={imageFileInputRef}
