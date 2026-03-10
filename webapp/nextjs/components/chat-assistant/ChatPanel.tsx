@@ -195,6 +195,7 @@ export function ChatPanel({
             </div>
           ))}
 
+          {/*
           {followUpQuestions.length > 0 ? (
             <details className={styles.metaBlock} open>
               <summary className={styles.metaSummary}>
@@ -222,6 +223,7 @@ export function ChatPanel({
               </ul>
             </details>
           ) : null}
+          */}
 
           {draft ? (
             <div className={styles.draftCard}>
