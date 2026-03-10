@@ -539,7 +539,6 @@ async def check_spelling(request: SpellCheckRequest):
                 {"role": "user", "content": f"以下のテキストを厳密に校正してください：\n\n{request.text}"}
             ],
             response_format=SpellCheckStructuredOutput,
-            temperature=0,
         )
         print(response.choices[0].message.parsed)
         
