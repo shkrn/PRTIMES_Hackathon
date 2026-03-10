@@ -32,14 +32,15 @@ docker compose up -d db
 npm run dev
 ```
 
-リポジトリ最上位に `.env` を作成し、Python バックエンド用の OpenAI 設定を置いてください。
+`webapp/.env` に共通の環境変数を配置してください。Next.js はこのファイルを追加で読み込みます。
 
 ```bash
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
+PYTHON_API_URL=http://localhost:8080
 ```
 
-必要に応じて `.env.local` にバックエンド API の接続先を指定してください。
+ブラウザ向けの接続先を変える場合だけ `nextjs/.env.local` を使ってください。
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080

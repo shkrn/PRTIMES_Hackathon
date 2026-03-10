@@ -18,6 +18,102 @@ type ChatPanelProps = {
   onDismissDraft: () => void;
 };
 
+type FollowUpQuestionFormProps = {
+  questions: string[];
+  fields: string[];
+  isPending: boolean;
+  errorMessage: string | null;
+  onSendMessage: (content: string) => Promise<void>;
+};
+
+const SINGLE_LINE_FIELDS = new Set([
+  'companyName',
+  'announcementTitle',
+  'announcementDate',
+]);
+
+function shouldUseSingleLineInput(fieldName: string | undefined, question: string): boolean {
+  if (fieldName && SINGLE_LINE_FIELDS.has(fieldName)) {
+    return true;
+  }
+
+  return /会社名|団体名|発表日|日付|タイトル|サービス名/.test(question);
+}
+
+function FollowUpQuestionForm({
+  questions,
+  fields,
+  isPending,
+  errorMessage,
+  onSendMessage,
+}: FollowUpQuestionFormProps) {
+  const [questionAnswers, setQuestionAnswers] = useState<string[]>(() => questions.map(() => ''));
+
+  const handleQuestionSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const normalizedAnswers = questionAnswers.map((answer) => answer.trim());
+    if (normalizedAnswers.some((answer) => !answer) || isPending) {
+      return;
+    }
+
+    const mergedContent = questions
+      .map((question, index) => `${question}\n回答: ${normalizedAnswers[index]}`)
+      .join('\n\n');
+
+    setQuestionAnswers(questions.map(() => ''));
+    await onSendMessage(mergedContent);
+  };
+
+  const areAllQuestionsAnswered =
+    questionAnswers.length === questions.length &&
+    questionAnswers.every((answer) => answer.trim().length > 0);
+
+  return (
+    <form className={styles.form} onSubmit={handleQuestionSubmit}>
+      <div className={styles.questionGrid}>
+        {questions.map((question, index) => (
+          <label key={question} className={styles.questionField}>
+            <span className={styles.questionLabel}>{question}</span>
+            {shouldUseSingleLineInput(fields[index], question) ? (
+              <input
+                type="text"
+                value={questionAnswers[index] ?? ''}
+                onChange={(event) => {
+                  const nextAnswers = [...questionAnswers];
+                  nextAnswers[index] = event.target.value;
+                  setQuestionAnswers(nextAnswers);
+                }}
+                className={styles.textInput}
+                placeholder="ここに回答を入力"
+                disabled={isPending}
+              />
+            ) : (
+              <textarea
+                value={questionAnswers[index] ?? ''}
+                onChange={(event) => {
+                  const nextAnswers = [...questionAnswers];
+                  nextAnswers[index] = event.target.value;
+                  setQuestionAnswers(nextAnswers);
+                }}
+                className={`${styles.textarea} ${styles.questionTextarea}`}
+                placeholder="ここに回答を入力"
+                disabled={isPending}
+              />
+            )}
+          </label>
+        ))}
+      </div>
+      {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
+      <div className={styles.actions}>
+        <button type="submit" className={styles.primaryButton} disabled={isPending || !areAllQuestionsAnswered}>
+          {isPending ? 'AI に送信中...' : 'まとめて回答'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function ChatPanel({
   messages,
   draft,
@@ -101,21 +197,32 @@ export function ChatPanel({
         </div>
       ) : null}
 
-      <form className={styles.form} onSubmit={handleSubmit}>
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder="例: 株式会社Exampleが中小企業向けAI要約サービスを発表します。"
-          className={styles.textarea}
-          disabled={isPending}
+      {followUpQuestions.length > 0 ? (
+        <FollowUpQuestionForm
+          key={followUpQuestions.join('||')}
+          questions={followUpQuestions}
+          fields={missingFields}
+          isPending={isPending}
+          errorMessage={errorMessage}
+          onSendMessage={onSendMessage}
         />
-        {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
-        <div className={styles.actions}>
-          <button type="submit" className={styles.primaryButton} disabled={isPending || !input.trim()}>
-            {isPending ? 'AI に送信中...' : '送信'}
-          </button>
-        </div>
-      </form>
+      ) : (
+        <form className={styles.form} onSubmit={handleSubmit}>
+          <textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="例: 株式会社Exampleが中小企業向けAI要約サービスを発表します。"
+            className={styles.textarea}
+            disabled={isPending}
+          />
+          {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
+          <div className={styles.actions}>
+            <button type="submit" className={styles.primaryButton} disabled={isPending || !input.trim()}>
+              {isPending ? 'AI に送信中...' : '送信'}
+            </button>
+          </div>
+        </form>
+      )}
     </aside>
   );
 }

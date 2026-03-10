@@ -15,12 +15,14 @@
 
 ### 1. Docker環境の起動
 
-リポジトリ最上位に `.env` を作成し、OpenAI API キーを設定してください。
+`webapp/.env` を作成し、OpenAI API キーを設定してください。
 
 ```bash
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 ```
+
+`docker compose` はこの `webapp/.env` を読み込みます。
 
 ```bash
 cd webapp
