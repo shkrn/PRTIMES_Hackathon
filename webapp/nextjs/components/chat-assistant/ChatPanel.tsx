@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import type { AssistantDraft, ChatMessage } from '@/lib/types';
 
@@ -61,8 +61,8 @@ function FollowUpQuestionForm({
       .map((question, index) => `${question}\n回答: ${normalizedAnswers[index]}`)
       .join('\n\n');
 
-    setQuestionAnswers(questions.map(() => ''));
     await onSendMessage(mergedContent);
+    setQuestionAnswers(questions.map(() => ''));
   };
 
   const areAllQuestionsAnswered =
@@ -126,6 +126,37 @@ export function ChatPanel({
   onDismissDraft,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const latestMessageRef = useRef<HTMLDivElement | null>(null);
+
+  const updateScrollState = () => {
+    const node = messageListRef.current;
+    if (!node) {
+      return;
+    }
+
+    const overflow = node.scrollHeight > node.clientHeight + 8;
+    const distanceFromBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
+
+    setHasOverflow(overflow);
+    setIsAtBottom(distanceFromBottom < 24);
+  };
+
+  const scrollToLatest = () => {
+    latestMessageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  };
+
+  useEffect(() => {
+    updateScrollState();
+  }, [messages.length, draft, followUpQuestions.length, missingFields.length, isPending]);
+
+  useEffect(() => {
+    if (isAtBottom) {
+      latestMessageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [isAtBottom, messages.length, draft, followUpQuestions.length, missingFields.length, isPending]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -134,8 +165,8 @@ export function ChatPanel({
       return;
     }
 
-    setInput('');
     await onSendMessage(nextInput);
+    setInput('');
   };
 
   return (
@@ -147,82 +178,101 @@ export function ChatPanel({
         </p>
       </div>
 
-      <div className={styles.messageList}>
-        {messages.map((message, index) => (
-          <div
-            key={`${message.role}-${index}`}
-            className={`${styles.message} ${
-              message.role === 'assistant' ? styles.assistantMessage : styles.userMessage
-            }`}
-          >
-            {message.content}
+      <div className={styles.chatFrame}>
+        <div
+          ref={messageListRef}
+          className={`${styles.messageList} ${hasOverflow ? styles.messageListScrollable : ''}`}
+          onScroll={updateScrollState}
+        >
+          {messages.map((message, index) => (
+            <div
+              key={`${message.role}-${index}`}
+              className={`${styles.message} ${
+                message.role === 'assistant' ? styles.assistantMessage : styles.userMessage
+              }`}
+            >
+              {message.content}
+            </div>
+          ))}
+
+          {followUpQuestions.length > 0 ? (
+            <div className={styles.metaBlock}>
+              <p className={styles.metaTitle}>追加で確認したいこと</p>
+              <ul className={styles.metaList}>
+                {followUpQuestions.map((question) => (
+                  <li key={question}>{question}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {missingFields.length > 0 ? (
+            <div className={styles.metaBlock}>
+              <p className={styles.metaTitle}>不足している項目</p>
+              <ul className={styles.metaList}>
+                {missingFields.map((field) => (
+                  <li key={field}>{field}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {draft ? (
+            <div className={styles.draftCard}>
+              <h3 className={styles.draftTitle}>{draft.title}</h3>
+              <p className={styles.draftContent}>{draft.content}</p>
+              <div className={styles.actions}>
+                <button type="button" className={styles.primaryButton} onClick={onApplyDraft}>
+                  本文へ反映
+                </button>
+                <button type="button" className={styles.secondaryButton} onClick={onDismissDraft}>
+                  下書きを閉じる
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div ref={latestMessageRef} />
+        </div>
+
+        {!isAtBottom && hasOverflow ? (
+          <div className={styles.scrollNoticeRow}>
+            <span className={styles.scrollNotice}>新しい内容は下に続いています</span>
+            <button type="button" className={styles.jumpToLatestButton} onClick={scrollToLatest}>
+              最新へ移動
+            </button>
           </div>
-        ))}
+        ) : null}
+
+        <div className={styles.composer}>
+          {followUpQuestions.length > 0 ? (
+            <FollowUpQuestionForm
+              key={followUpQuestions.join('||')}
+              questions={followUpQuestions}
+              fields={missingFields}
+              isPending={isPending}
+              errorMessage={errorMessage}
+              onSendMessage={onSendMessage}
+            />
+          ) : (
+            <form className={styles.form} onSubmit={handleSubmit}>
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="例: 株式会社Exampleが中小企業向けAI要約サービスを発表します。"
+                className={styles.textarea}
+                disabled={isPending}
+              />
+              {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
+              <div className={styles.actions}>
+                <button type="submit" className={styles.primaryButton} disabled={isPending || !input.trim()}>
+                  {isPending ? 'AI に送信中...' : '送信'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
-
-      {followUpQuestions.length > 0 ? (
-        <div className={styles.metaBlock}>
-          <p className={styles.metaTitle}>追加で確認したいこと</p>
-          <ul className={styles.metaList}>
-            {followUpQuestions.map((question) => (
-              <li key={question}>{question}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {missingFields.length > 0 ? (
-        <div className={styles.metaBlock}>
-          <p className={styles.metaTitle}>不足している項目</p>
-          <ul className={styles.metaList}>
-            {missingFields.map((field) => (
-              <li key={field}>{field}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {draft ? (
-        <div className={styles.draftCard}>
-          <h3 className={styles.draftTitle}>{draft.title}</h3>
-          <p className={styles.draftContent}>{draft.content}</p>
-          <div className={styles.actions}>
-            <button type="button" className={styles.primaryButton} onClick={onApplyDraft}>
-              本文へ反映
-            </button>
-            <button type="button" className={styles.secondaryButton} onClick={onDismissDraft}>
-              下書きを閉じる
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {followUpQuestions.length > 0 ? (
-        <FollowUpQuestionForm
-          key={followUpQuestions.join('||')}
-          questions={followUpQuestions}
-          fields={missingFields}
-          isPending={isPending}
-          errorMessage={errorMessage}
-          onSendMessage={onSendMessage}
-        />
-      ) : (
-        <form className={styles.form} onSubmit={handleSubmit}>
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="例: 株式会社Exampleが中小企業向けAI要約サービスを発表します。"
-            className={styles.textarea}
-            disabled={isPending}
-          />
-          {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
-          <div className={styles.actions}>
-            <button type="submit" className={styles.primaryButton} disabled={isPending || !input.trim()}>
-              {isPending ? 'AI に送信中...' : '送信'}
-            </button>
-          </div>
-        </form>
-      )}
     </aside>
   );
 }
