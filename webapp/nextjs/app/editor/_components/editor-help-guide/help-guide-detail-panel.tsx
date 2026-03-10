@@ -154,7 +154,7 @@ export function HelpGuideDetailPanel({
             </button>
           ) : (
             <p className={styles.autoNote}>
-              エディタ内容に応じて自動で判定されます。本文や素材を更新すると状態も変わります。
+              エディタ内容やこの画面での操作に応じて自動で判定されます。本文更新、テンプレート操作、ショートカット利用を行うと状態も変わります。
             </p>
           )}
         </>

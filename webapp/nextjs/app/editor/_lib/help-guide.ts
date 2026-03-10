@@ -3,7 +3,17 @@ export const HELP_STORAGE_KEY = 'prtimes-editor-help-checks';
 
 export type HelpBranchId = string;
 export type ManualHelpCheckId = 'audience' | 'newsValue' | 'leadSummary' | 'cta' | 'proofread';
-export type AutoHelpCheckId = 'titleLength' | 'bodyLength' | 'hasList' | 'hasImage' | 'hasLink';
+export type AutoHelpCheckId =
+  | 'titleLength'
+  | 'bodyLength'
+  | 'hasList'
+  | 'hasImage'
+  | 'hasLink'
+  | 'saveShortcut'
+  | 'formatShortcut'
+  | 'historyShortcut'
+  | 'templateLoaded'
+  | 'templateSaved';
 export type HelpCheckId = ManualHelpCheckId | AutoHelpCheckId;
 export type HelpNodeId = typeof HELP_ROOT_ID | HelpBranchId | HelpCheckId;
 export type HelpItem = {
@@ -49,6 +59,15 @@ export type HelpNodeProgress = {
 
 export type ManualHelpChecks = Record<ManualHelpCheckId, boolean>;
 export type AutoHelpChecks = Record<AutoHelpCheckId, boolean>;
+export type TemplateGuideState = {
+  hasLoadedTemplate: boolean;
+  hasSavedTemplate: boolean;
+};
+export type KeyboardShortcutGuideState = {
+  hasUsedSaveShortcut: boolean;
+  hasUsedFormatShortcut: boolean;
+  hasUsedHistoryShortcut: boolean;
+};
 
 type HelpDocument = Record<string, unknown>;
 
@@ -96,6 +115,59 @@ export const HELP_BRANCHES: HelpBranch[] = [
           detail:
             '今回の発表で何が新しいのか、従来との違いは何かを先に整理してください。差分が曖昧だと本文が散らばります。',
           kind: 'manual',
+      },
+    ],
+  },
+  {
+    id: 'shortcuts',
+    title: 'ショートカット',
+    summary: '保存や装飾をキーボードで操作できると、編集の往復が速くなります。',
+    detail:
+      'このエディタでは、保存、文字装飾、元に戻す/やり直しにショートカットが使えます。1回実際に試しておくと、本文調整のテンポがかなり上がります。',
+    items: [
+      {
+        id: 'saveShortcut',
+        title: 'Cmd/Ctrl+S で保存した',
+        detail:
+          '保存ボタンを押さなくても、Cmd/Ctrl+S でそのまま保存できます。修正を細かく反映したいときに使うと作業が止まりにくくなります。',
+        kind: 'auto',
+      },
+      {
+        id: 'formatShortcut',
+        title: 'Cmd/Ctrl+B・I・U で装飾した',
+        detail:
+          '強調したい語句は Cmd/Ctrl+B で太字、Cmd/Ctrl+I で斜体、Cmd/Ctrl+U で下線にできます。ツールバーに触らず整えられるようにしておくと編集が速くなります。',
+        kind: 'auto',
+      },
+      {
+        id: 'historyShortcut',
+        title: 'Cmd/Ctrl+Z で戻し、やり直しも試した',
+        detail:
+          '誤って編集したときは Cmd/Ctrl+Z で元に戻せます。やり直しは Shift+Cmd/Ctrl+Z で使えます。試しながら書くときに必須の操作です。',
+        kind: 'auto',
+      },
+    ],
+  },
+  {
+    id: 'templates',
+    title: 'テンプレート活用',
+    summary: '下書きの流用と再利用用の保存を使い分けて、作成を早めます。',
+    detail:
+      'テンプレート機能は、書き出しを速くしたいときと、使い回せる構成を残したいときの両方で役立ちます。必要な場面で読み込みと保存を使い分けてください。',
+    items: [
+      {
+        id: 'templateLoaded',
+        title: 'テンプレートを読み込んで土台を作った',
+        detail:
+          '過去に使った構成や定型フォーマットがある場合は、テンプレートを読み込んでから編集を始めると入力を減らせます。上部のテンプレート選択と「テンプレート読込」を使ってください。',
+        kind: 'auto',
+      },
+      {
+        id: 'templateSaved',
+        title: '再利用しやすい形でテンプレート保存した',
+        detail:
+          '今後も使い回す見出し構成や本文の型ができたら、分かりやすい名前でテンプレート保存してください。チーム内での再利用や次回作成の短縮に役立ちます。',
+        kind: 'auto',
       },
     ],
   },
@@ -245,6 +317,8 @@ type BuildAutoHelpChecksOptions = {
   maxTitleLength: number;
   maxContentLength: number;
   editorDocument: HelpDocument;
+  templateGuideState: TemplateGuideState;
+  keyboardShortcutGuideState: KeyboardShortcutGuideState;
 };
 
 export function buildAutoHelpChecks({
@@ -254,6 +328,8 @@ export function buildAutoHelpChecks({
   maxTitleLength,
   maxContentLength,
   editorDocument,
+  templateGuideState,
+  keyboardShortcutGuideState,
 }: BuildAutoHelpChecksOptions): AutoHelpChecks {
   const trimmedTitleCount = title.trim().length;
 
@@ -263,6 +339,11 @@ export function buildAutoHelpChecks({
     hasList: hasNodeType(editorDocument, 'bulletList') || hasNodeType(editorDocument, 'orderedList'),
     hasImage: hasNodeType(editorDocument, 'image'),
     hasLink: hasMarkType(editorDocument, 'link'),
+    saveShortcut: keyboardShortcutGuideState.hasUsedSaveShortcut,
+    formatShortcut: keyboardShortcutGuideState.hasUsedFormatShortcut,
+    historyShortcut: keyboardShortcutGuideState.hasUsedHistoryShortcut,
+    templateLoaded: templateGuideState.hasLoadedTemplate,
+    templateSaved: templateGuideState.hasSavedTemplate,
   };
 }
 
@@ -294,6 +375,11 @@ export function buildHelpStatusText({
     hasList: autoHelpChecks.hasList ? '箇条書きあり' : '箇条書きなし',
     hasImage: autoHelpChecks.hasImage ? '画像あり' : '画像なし',
     hasLink: autoHelpChecks.hasLink ? 'リンクあり' : 'リンクなし',
+    saveShortcut: autoHelpChecks.saveShortcut ? '使用済み' : '未使用',
+    formatShortcut: autoHelpChecks.formatShortcut ? '使用済み' : '未使用',
+    historyShortcut: autoHelpChecks.historyShortcut ? '使用済み' : '未使用',
+    templateLoaded: autoHelpChecks.templateLoaded ? '読込済み' : '未読込',
+    templateSaved: autoHelpChecks.templateSaved ? '保存済み' : '未保存',
   };
 }
 

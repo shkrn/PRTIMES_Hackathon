@@ -16,9 +16,11 @@ import {
   parseStoredManualHelpChecks,
   type HelpCheckId,
   type HelpNodeId,
+  type KeyboardShortcutGuideState,
   type ManualHelpCheckId,
   type ManualHelpChecks,
   type PendingHelpItem,
+  type TemplateGuideState,
 } from '../../_lib/help-guide';
 import { HelpGuideModal } from './help-guide-modal';
 import { HelpGuideTrigger } from './help-guide-trigger';
@@ -30,6 +32,8 @@ type EditorHelpGuideProps = {
   editorDocument: Record<string, unknown>;
   maxTitleLength: number;
   maxContentLength: number;
+  templateGuideState: TemplateGuideState;
+  keyboardShortcutGuideState: KeyboardShortcutGuideState;
 };
 
 function loadManualHelpChecks(): ManualHelpChecks {
@@ -56,6 +60,8 @@ export function EditorHelpGuide({
   editorDocument,
   maxTitleLength,
   maxContentLength,
+  templateGuideState,
+  keyboardShortcutGuideState,
 }: EditorHelpGuideProps) {
   const [manualHelpChecks, setManualHelpChecks] = useState<ManualHelpChecks>(loadManualHelpChecks);
   const [isOpen, setIsOpen] = useState(false);
@@ -93,6 +99,8 @@ export function EditorHelpGuide({
     maxTitleLength,
     maxContentLength,
     editorDocument,
+    templateGuideState,
+    keyboardShortcutGuideState,
   });
   const helpStatusText = buildHelpStatusText({
     manualHelpChecks,
