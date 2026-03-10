@@ -33,7 +33,9 @@ import { extractPlainTextFromTiptapDocument, plainTextToTiptapDocument } from '@
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
 const templateListQueryKey = ['press-release-templates'];
-const DEFAULT_API_BASE_URL = 'http://localhost:8080';
+const DEFAULT_API_BASE_URL = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.hostname}:8080`
+  : 'http://localhost:8080';
 // 文字数制限の定数
 const MAX_TITLE_LENGTH = 100;
 const MAX_CONTENT_LENGTH = 500;
