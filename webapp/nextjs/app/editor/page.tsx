@@ -98,6 +98,19 @@ function syncLinkHrefs(node: JsonNode): JsonNode {
 
   return { ...node, content, marks };
 }
+// 型定義を追加
+interface SpellCheckSuggestion {
+  type: '誤字' | '脱字' | '文法' | '表現' | '敬語';
+  original: string;
+  suggestion: string;
+  reason: string;
+}
+
+interface SpellCheckResult {
+  has_errors: boolean;
+  corrected_text: string;
+  suggestions: SpellCheckSuggestion[];
+}
 
 function syncImageSrcs(node: JsonNode): JsonNode {
   const content = Array.isArray(node.content)
@@ -250,6 +263,12 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const editorRef = useRef<TiptapEditor | null>(null);
   const dragDepthRef = useRef(0);
+  // Editorコンポーネント内に追加
+const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | null>(null);
+
+  const [isCheckingSpelling, setIsCheckingSpelling] = useState(false);
+  const [spellCheckResult, setSpellCheckResult] = useState<SpellCheckResult | null>(null);
+  const [showSpellCheckModal, setShowSpellCheckModal] = useState(false);
 
   const uploadImage = useCallback(async (file: File): Promise<string> => {
     const formData = new FormData();
@@ -268,6 +287,80 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     const result = (await response.json()) as { url: string };
     return result.url;
   }, []);
+  // 誤字脱字チェック関数
+  const checkSpelling = async (text: string, textType: 'title' | 'content') => {
+    console.log("checkSpelling called with textType:");
+    setIsCheckingSpelling(true);
+    setActiveCheckType(textType);
+    setSpellCheckResult(null);
+
+    try {
+      console.log(JSON.stringify({ text, text_type: textType }))
+
+      
+      const response = await fetch(buildApiUrl('/spell-check'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, text_type: textType }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || '誤字脱字チェックに失敗しました');
+      }
+
+      const result: SpellCheckResult = await response.json();
+      setSpellCheckResult(result);
+      setShowSpellCheckModal(true);
+
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '誤字脱字チェックに失敗しました';
+      alert(message);
+    } finally {
+      setIsCheckingSpelling(false);
+    }
+  };
+  const handleCheckTitleSpelling = () => {
+    if (!title.trim()) {
+      alert('タイトルを入力してください');
+      return;
+    }
+    checkSpelling(title, 'title');
+  };
+
+  // 本文の誤字脱字チェック
+  const handleCheckContentSpelling = () => {
+    
+    if (!editor) return;
+    
+    const text = editor.getText();
+    console.log(text);
+    if (!text.trim()) {
+      alert('本文を入力してください');
+      return;
+    }
+    checkSpelling(text, 'content');
+    
+
+  };
+
+  // 修正を適用
+  const applyCorrection = () => {
+    if (!spellCheckResult || !activeCheckType) return;
+
+    if (activeCheckType === 'title') {
+        // タイトルを更新
+      setTitle(spellCheckResult.corrected_text);
+    } else if (activeCheckType === 'content' && editor) {
+    // 本文を更新（※注：setContentはHTMLやJSONを想定するため、プレーンテキストだと書式が消える点に注意）
+      editor.commands.setContent(spellCheckResult.corrected_text);
+    }
+
+    setShowSpellCheckModal(false);
+    setSpellCheckResult(null);
+    setActiveCheckType(null);
+  };
+
 
   const insertImagesFromFiles = useCallback(
     async (files: File[], position?: number) => {
@@ -391,6 +484,11 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
 
   const handleSave = useCallback(() => {
     if (!editor) return;
+
+    // バリデーションチェック
+    if (!validateBeforeSave()) {
+      return;
+    }
 
     // エラーがなければ保存
     setErrorMessage('');
@@ -655,6 +753,22 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
               hasUsedHistoryShortcut,
             }}
           />
+          <button 
+            type="button" 
+            onClick={handleCheckTitleSpelling}
+            className={styles.spellCheckButton}
+            disabled={isCheckingSpelling}
+          >
+            {isCheckingSpelling ? 'チェック中...' : 'タイトルをチェック'}
+          </button>
+          <button 
+            type="button" 
+            onClick={handleCheckContentSpelling}
+            className={styles.spellCheckButton}
+            disabled={isCheckingSpelling}
+          >
+            {isCheckingSpelling ? 'チェック中...' : '本文をチェック'}
+          </button>
           <input
             ref={importFileInputRef}
             type="file"
@@ -670,6 +784,54 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           </button>
         </div>
       </header>
+      {showSpellCheckModal && spellCheckResult && (
+        <div className={styles.modal} onClick={() => setShowSpellCheckModal(false)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>誤字脱字チェック結果</h2>
+            
+            {!spellCheckResult.has_errors ? (
+              <p className={styles.noErrors}>問題は見つかりませんでした。</p>
+            ) : (
+              <>
+                <div className={styles.correctedText}>
+                  <h3>修正後のテキスト：</h3>
+                  <p>{spellCheckResult.corrected_text}</p>
+                </div>
+
+                <div className={styles.suggestions}>
+                  <h3>指摘事項：</h3>
+                  {spellCheckResult.suggestions.map((suggestion, index) => (
+                    <div key={index} className={styles.suggestionItem}>
+                      <span className={styles.suggestionType}>[{suggestion.type}]</span>
+                      <p><strong>元：</strong>{suggestion.original}</p>
+                      <p><strong>修正案：</strong>{suggestion.suggestion}</p>
+                      <p><strong>理由：</strong>{suggestion.reason}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={styles.modalActions}>
+                  <button 
+                    onClick={applyCorrection}
+                    className={styles.applyButton}
+                  >
+                    修正を適用
+                  </button>
+                  <button 
+                    onClick={() => setShowSpellCheckModal(false)}
+                    className={styles.cancelButton}
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+
+
       {importStatus ? <div className={styles.importStatus}>{importStatus}</div> : null}
       {errorMessage && (
         <div className={styles.errorMessage}>
