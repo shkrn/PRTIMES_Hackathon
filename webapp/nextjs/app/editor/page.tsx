@@ -1,13 +1,15 @@
 'use client';
-import { useState, useCallback, useRef, type ChangeEvent } from 'react';
+import { useState, useCallback, useRef, useEffect, type ChangeEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent, type Editor as TiptapEditor } from '@tiptap/react';
+import { toast } from 'sonner';
 import Document from '@tiptap/extension-document';
 import Heading from '@tiptap/extension-heading';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list';
 import Link from '@tiptap/extension-link';
+import History from '@tiptap/extension-history';
 import type {
   TipTapNode,
   PressRelease,
@@ -22,13 +24,22 @@ import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-
 import { Button } from '@/components/tiptap-ui-primitive/button';
 import Image from '@tiptap/extension-image';
 
-import { BoldIcon, ItalicIcon, UnderlineIcon, ListIcon, ListOrderedIcon, ImageIcon, LinkIcon } from 'lucide-react';
+import {
+  BoldIcon,
+  ItalicIcon,
+  UnderlineIcon,
+  ListIcon,
+  ListOrderedIcon,
+  ImageIcon,
+  LinkIcon,
+  RotateCcwIcon,
+  RotateCwIcon,
+} from 'lucide-react';
 import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
 import { ChatPanel } from '@/components/chat-assistant/ChatPanel';
 import { useChatAssistant } from '@/hooks/use-chat-assistant';
 import { extractPlainTextFromTiptapDocument, plainTextToTiptapDocument } from '@/lib/tiptap-utils';
-
-
+import { EditorHelpGuide } from './_components/editor-help-guide';
 
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
@@ -93,6 +104,19 @@ function syncLinkHrefs(node: JsonNode): JsonNode {
 
   return { ...node, content, marks };
 }
+// 型定義を追加
+interface SpellCheckSuggestion {
+  type: '誤字' | '脱字' | '文法' | '表現' | '敬語';
+  original: string;
+  suggestion: string;
+  reason: string;
+}
+
+interface SpellCheckResult {
+  has_errors: boolean;
+  corrected_text: string;
+  suggestions: SpellCheckSuggestion[];
+}
 
 function syncImageSrcs(node: JsonNode): JsonNode {
   const content = Array.isArray(node.content)
@@ -153,7 +177,6 @@ function useSaveMutation() {
       return response.json();
     },
     onSuccess: () => {
-      alert('保存しました');
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (error: Error) => alert(`エラー: ${error.message}`),
@@ -230,6 +253,12 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const [errorMessage, setErrorMessage] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [templateStatus, setTemplateStatus] = useState<string | null>(null);
+  const [editorDocument, setEditorDocument] = useState<JsonNode>(initialContent as JsonNode);
+  const [hasLoadedTemplate, setHasLoadedTemplate] = useState(false);
+  const [hasSavedTemplate, setHasSavedTemplate] = useState(false);
+  const [hasUsedSaveShortcut, setHasUsedSaveShortcut] = useState(false);
+  const [hasUsedFormatShortcut, setHasUsedFormatShortcut] = useState(false);
+  const [hasUsedHistoryShortcut, setHasUsedHistoryShortcut] = useState(false);
   const { isPending, mutate } = useSaveMutation();
   const { data: templates = [], isPending: isTemplateListPending } = useTemplateListQuery();
   const createTemplateMutation = useCreateTemplateMutation();
@@ -265,6 +294,12 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     pressReleaseId: PRESS_RELEASE_ID,
     getCurrentDraftContext,
   });
+  // Editorコンポーネント内に追加
+const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | null>(null);
+
+  const [isCheckingSpelling, setIsCheckingSpelling] = useState(false);
+  const [spellCheckResult, setSpellCheckResult] = useState<SpellCheckResult | null>(null);
+  const [showSpellCheckModal, setShowSpellCheckModal] = useState(false);
 
   const uploadImage = useCallback(async (file: File): Promise<string> => {
     const formData = new FormData();
@@ -283,6 +318,80 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     const result = (await response.json()) as { url: string };
     return result.url;
   }, []);
+  // 誤字脱字チェック関数
+  const checkSpelling = async (text: string, textType: 'title' | 'content') => {
+    console.log("checkSpelling called with textType:");
+    setIsCheckingSpelling(true);
+    setActiveCheckType(textType);
+    setSpellCheckResult(null);
+
+    try {
+      console.log(JSON.stringify({ text, text_type: textType }))
+
+      
+      const response = await fetch(buildApiUrl('/spell-check'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, text_type: textType }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || '誤字脱字チェックに失敗しました');
+      }
+
+      const result: SpellCheckResult = await response.json();
+      setSpellCheckResult(result);
+      setShowSpellCheckModal(true);
+
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '誤字脱字チェックに失敗しました';
+      alert(message);
+    } finally {
+      setIsCheckingSpelling(false);
+    }
+  };
+  const handleCheckTitleSpelling = () => {
+    if (!title.trim()) {
+      alert('タイトルを入力してください');
+      return;
+    }
+    checkSpelling(title, 'title');
+  };
+
+  // 本文の誤字脱字チェック
+  const handleCheckContentSpelling = () => {
+    
+    if (!editor) return;
+    
+    const text = editor.getText();
+    console.log(text);
+    if (!text.trim()) {
+      alert('本文を入力してください');
+      return;
+    }
+    checkSpelling(text, 'content');
+    
+
+  };
+
+  // 修正を適用
+  const applyCorrection = () => {
+    if (!spellCheckResult || !activeCheckType) return;
+
+    if (activeCheckType === 'title') {
+        // タイトルを更新
+      setTitle(spellCheckResult.corrected_text);
+    } else if (activeCheckType === 'content' && editor) {
+    // 本文を更新（※注：setContentはHTMLやJSONを想定するため、プレーンテキストだと書式が消える点に注意）
+      editor.commands.setContent(spellCheckResult.corrected_text);
+    }
+
+    setShowSpellCheckModal(false);
+    setSpellCheckResult(null);
+    setActiveCheckType(null);
+  };
+
 
   const insertImagesFromFiles = useCallback(
     async (files: File[], position?: number) => {
@@ -333,6 +442,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       Heading,
       Paragraph,
       Text,
+      History,
       Bold,
       Italic,
       Underline,
@@ -381,9 +491,11 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     immediatelyRender: false,
     onCreate: ({ editor }) => {
       setContentCount(editor.getText().length);
+      setEditorDocument(editor.getJSON() as JsonNode);
     },
     onUpdate: ({ editor }) => {
       setContentCount(editor.getText().length);
+      setEditorDocument(editor.getJSON() as JsonNode);
       console.log("onUpdate");
       if (errorMessage) {
         setErrorMessage('');
@@ -399,17 +511,16 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     }
   };
 
-  // バリデーション関数
   const validateBeforeSave = (): boolean => {
-    const errors: string[] = [];
+  const errors: string[] = [];
 
     if (titleCount > MAX_TITLE_LENGTH) {
-      errors.push(`タイトルが${MAX_TITLE_LENGTH}文字を超えています（現在${titleCount}文字）`);
-    }
+    errors.push(`タイトルが${MAX_TITLE_LENGTH}文字を超えています（現在${titleCount}文字）`);
+      }
 
     if (contentCount > MAX_CONTENT_LENGTH) {
-      errors.push(`本文が${MAX_CONTENT_LENGTH}文字を超えています（現在${contentCount}文字）`);
-    }
+    errors.push(`本文が${MAX_CONTENT_LENGTH}文字を超えています（現在${contentCount}文字）`);
+      }
 
     if (errors.length > 0) {
       setErrorMessage(errors.join('\n'));
@@ -421,9 +532,10 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
 
   editorRef.current = editor;
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     if (!editor) return;
 
+    // バリデーションチェック
     if (!validateBeforeSave()) {
       return;
     }
@@ -432,8 +544,52 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     mutate({
       title,
       content: JSON.stringify(syncLinkHrefs(editor.getJSON() as JsonNode)),
+    }, {
+      onSuccess: () => {
+        toast.success('保存しました');
+      },
     });
-  };
+  }, [editor, mutate, title]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') {
+        return;
+      }
+
+      event.preventDefault();
+      setHasUsedSaveShortcut(true);
+      handleSave();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleSave]);
+
+  useEffect(() => {
+    const handleShortcutUsage = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !editor?.isFocused) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'b' || key === 'i' || key === 'u') {
+        setHasUsedFormatShortcut(true);
+        return;
+      }
+
+      if (key === 'z' || key === 'y') {
+        setHasUsedHistoryShortcut(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcutUsage);
+    return () => {
+      window.removeEventListener('keydown', handleShortcutUsage);
+    };
+  }, [editor]);
 
   const handleSaveTemplate = () => {
     if (!editor) return;
@@ -454,6 +610,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         onSuccess: (template) => {
           setSelectedTemplateId(String(template.id));
           setTemplateName('');
+          setHasSavedTemplate(true);
           setTemplateStatus(`"${template.name}" をテンプレートとして保存しました`);
         },
         onError: (error) => {
@@ -477,6 +634,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         try {
           editor.commands.setContent(JSON.parse(template.content));
           setTitle(template.title);
+          setHasLoadedTemplate(true);
           setTemplateStatus(`"${template.name}" を読み込みました`);
         } catch {
           setTemplateStatus('テンプレート本文の解析に失敗しました');
@@ -613,7 +771,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     dragDepthRef.current = 0;
     setIsDraggingImage(false);
   }, []);
-
   const applyAssistantDraft = useCallback(() => {
     if (!editor || !assistantDraft) {
       return;
@@ -639,6 +796,39 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           タイトル: {titleCount}/{MAX_TITLE_LENGTH}文字 / 本文: {contentCount}/{MAX_CONTENT_LENGTH}文字
         </div>
         <div className={styles.headerActions}>
+          <EditorHelpGuide
+            title={title}
+            titleCount={titleCount}
+            contentCount={contentCount}
+            editorDocument={editorDocument}
+            maxTitleLength={MAX_TITLE_LENGTH}
+            maxContentLength={MAX_CONTENT_LENGTH}
+            templateGuideState={{
+              hasLoadedTemplate,
+              hasSavedTemplate,
+            }}
+            keyboardShortcutGuideState={{
+              hasUsedSaveShortcut,
+              hasUsedFormatShortcut,
+              hasUsedHistoryShortcut,
+            }}
+          />
+          <button 
+            type="button" 
+            onClick={handleCheckTitleSpelling}
+            className={styles.spellCheckButton}
+            disabled={isCheckingSpelling}
+          >
+            {isCheckingSpelling ? 'チェック中...' : 'タイトルをチェック'}
+          </button>
+          <button 
+            type="button" 
+            onClick={handleCheckContentSpelling}
+            className={styles.spellCheckButton}
+            disabled={isCheckingSpelling}
+          >
+            {isCheckingSpelling ? 'チェック中...' : '本文をチェック'}
+          </button>
           <input
             ref={importFileInputRef}
             type="file"
@@ -654,6 +844,54 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           </button>
         </div>
       </header>
+      {showSpellCheckModal && spellCheckResult && (
+        <div className={styles.modal} onClick={() => setShowSpellCheckModal(false)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.modalTitle}>誤字脱字チェック結果</h2>
+            
+            {!spellCheckResult.has_errors ? (
+              <p className={styles.noErrors}>問題は見つかりませんでした。</p>
+            ) : (
+              <>
+                <div className={styles.correctedText}>
+                  <h3>修正後のテキスト：</h3>
+                  <p>{spellCheckResult.corrected_text}</p>
+                </div>
+
+                <div className={styles.suggestions}>
+                  <h3>指摘事項：</h3>
+                  {spellCheckResult.suggestions.map((suggestion, index) => (
+                    <div key={index} className={styles.suggestionItem}>
+                      <span className={styles.suggestionType}>[{suggestion.type}]</span>
+                      <p><strong>元：</strong>{suggestion.original}</p>
+                      <p><strong>修正案：</strong>{suggestion.suggestion}</p>
+                      <p><strong>理由：</strong>{suggestion.reason}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className={styles.modalActions}>
+                  <button 
+                    onClick={applyCorrection}
+                    className={styles.applyButton}
+                  >
+                    修正を適用
+                  </button>
+                  <button 
+                    onClick={() => setShowSpellCheckModal(false)}
+                    className={styles.cancelButton}
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+
+
       {importStatus ? <div className={styles.importStatus}>{importStatus}</div> : null}
       {errorMessage && (
         <div className={styles.errorMessage}>
@@ -718,59 +956,88 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           >
             <Toolbar>
               <ToolbarGroup>
+              <Button
+                data-style="ghost"
+                onClick={() => editor.chain().focus().undo().run()}
+                disabled={!editor.can().chain().focus().undo().run()}
+                shortcutKeys="mod+z"
+                tooltip="元に戻す (Cmd/Ctrl+Z)"
+              >
+                <RotateCcwIcon className="tiptap-button-icon" />
+              </Button>
+              <Button
+                data-style="ghost"
+                onClick={() => editor.chain().focus().redo().run()}
+                disabled={!editor.can().chain().focus().redo().run()}
+                shortcutKeys="shift+mod+z"
+                tooltip="やり直し (Shift+Cmd/Ctrl+Z)"
+              >
+                <RotateCwIcon className="tiptap-button-icon" />
+              </Button>
+            </ToolbarGroup>
+
+            <ToolbarSeparator />
+
+            <ToolbarGroup>
                 <Button data-style="ghost"
                     onClick={() => editor.chain().focus().toggleBold().run()}
                     disabled={!editor.can().chain().focus().toggleBold().run()}
                     className={editor.isActive('bold') ? styles.isActive : ''}
-                  >
+                    shortcutKeys="mod+b"
+                  tooltip="太字"
+                >
                   <BoldIcon className="tiptap-button-icon" />
                 </Button>
                 <Button data-style="ghost"
                     onClick={() => editor.chain().focus().toggleItalic().run()}
                     disabled={!editor.can().chain().focus().toggleItalic().run()}
                     className={editor.isActive('italic') ? styles.isActive : ''}
-                  >
+                    shortcutKeys="mod+i"
+                  tooltip="斜体"
+                >
                   <ItalicIcon className="tiptap-button-icon" />
                 </Button>
                 <Button data-style="ghost"
                     onClick={() => editor.chain().focus().toggleUnderline().run()}
                     disabled={!editor.can().chain().focus().toggleUnderline().run()}
                     className={editor.isActive('underline') ? styles.isActive : ''}
-                  >
+                    shortcutKeys="mod+u"
+                  tooltip="下線"
+                >
                   <UnderlineIcon className="tiptap-button-icon" />
                 </Button>
               </ToolbarGroup>
 
               <ToolbarSeparator />
 
-              <ToolbarGroup>
-                <Button data-style="ghost"
-                    onClick={() => editor.chain().focus().toggleBulletList().run()}
-                    disabled={!editor.can().chain().focus().toggleBulletList().run()}
-                    className={editor.isActive('bulletList') ? styles.isActive : ''}
-                  >
-                  <ListIcon className="tiptap-button-icon" />
-                </Button>
-                <Button data-style="ghost"
-                    onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                    disabled={!editor.can().chain().focus().toggleOrderedList().run()}
-                    className={editor.isActive('orderedList') ? styles.isActive : ''}
-                  >
-                  <ListOrderedIcon className="tiptap-button-icon" />
-                </Button>
-              </ToolbarGroup>
+            <ToolbarGroup>
+              <Button data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleBulletList().run()}
+                  disabled={!editor.can().chain().focus().toggleBulletList().run()}
+                  className={editor.isActive('bulletList') ? styles.isActive : ''}
+                >
+                <ListIcon className="tiptap-button-icon" />
+              </Button>
+              <Button data-style="ghost"
+                  onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                  disabled={!editor.can().chain().focus().toggleOrderedList().run()}
+                  className={editor.isActive('orderedList') ? styles.isActive : ''}
+                >
+                <ListOrderedIcon className="tiptap-button-icon" />
+              </Button>
+            </ToolbarGroup>
 
               <ToolbarSeparator />
 
-              <ToolbarGroup>
-                <Button data-style="ghost" onClick={openImagePicker} disabled={isUploadingImage}>
-                  <ImageIcon className="tiptap-button-icon" />
-                </Button>
-                <Button data-style="ghost" onClick={insertImageByUrl} disabled={isUploadingImage}>
-                  <LinkIcon className="tiptap-button-icon" />
-                </Button>
-              </ToolbarGroup>
-            </Toolbar>
+            <ToolbarGroup>
+              <Button data-style="ghost" onClick={openImagePicker} disabled={isUploadingImage}>
+                <ImageIcon className="tiptap-button-icon" />
+              </Button>
+              <Button data-style="ghost" onClick={insertImageByUrl} disabled={isUploadingImage}>
+                <LinkIcon className="tiptap-button-icon" />
+              </Button>
+            </ToolbarGroup>
+          </Toolbar>
 
             <input
               ref={imageFileInputRef}
@@ -793,7 +1060,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
               />
             </div>
 
-            <EditorContent editor={editor} />
+          <EditorContent editor={editor} />
           </div>
         </div>
         <ChatPanel

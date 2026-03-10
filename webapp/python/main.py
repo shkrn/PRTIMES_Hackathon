@@ -9,7 +9,13 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
+from openai import OpenAI
+from pydantic import BaseModel
+from dotenv import load_dotenv  
+from pydantic import BaseModel, Field
 
+# .envファイルを読み込む（Dockerコンテナ内で実行する場合も必要）
+load_dotenv()
 import psycopg
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +25,8 @@ from psycopg.rows import dict_row
 from openai_service import AssistantServiceError, generate_assistant_reply
 from schemas import AssistantChatRequest, TemplatePayload
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 MAX_FILE_SIZE = 5 * 1024 * 1024
 MAX_IMAGE_EDGE = 600
 ALLOWED_IMAGE_TYPES = {
@@ -77,7 +85,7 @@ def parse_press_release_id(id_value: str) -> int:
 
 
 async def parse_save_request(request: Request) -> tuple[str, str]:
-    """POSTリクエストボディをPHP/Go実装と同等ルールで検証する"""
+    """POSTリクエストボディを検証し、文字数制限を適用する"""
     body = await request.body()
 
     try:
@@ -88,20 +96,31 @@ async def parse_save_request(request: Request) -> tuple[str, str]:
             detail={"code": "INVALID_JSON", "message": "Invalid JSON"},
         ) from err
 
-    # JSONオブジェクトでない場合は必須フィールド不足として扱う
     if not isinstance(payload, dict):
         payload = {}
 
     title = payload.get("title")
     content = payload.get("content")
+
+    # 型チェックと必須チェック
     if not isinstance(title, str) or not isinstance(content, str):
         raise HTTPException(
             status_code=400,
             detail={"code": "MISSING_REQUIRED_FIELDS", "message": "Title and content are required"},
         )
 
-    # 空白のみタイトルも許容（PHP/Goと同じ）
+    # 文字数バリデーション
+    if len(title) > MAX_TITLE_LENGTH or len(content) > MAX_CONTENT_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "TEXT_TOO_LONG",
+                "message": f"Title must be {MAX_TITLE_LENGTH} characters or less and content must be {MAX_CONTENT_LENGTH} characters or less"
+            },
+        )
+
     return title, content
+
 
 
 def format_timestamp(value: datetime) -> str:
@@ -468,3 +487,100 @@ async def parse_save_request(request: Request) -> tuple[str, str]:
         )
 
     return title, content
+
+class SpellCheckRequest(BaseModel):
+    """誤字脱字チェックリクエスト"""
+    text: str
+    text_type: str  # "title" または "content"
+
+
+class SpellCheckResponse(BaseModel):
+    """誤字脱字チェックレスポンス"""
+    has_errors: bool
+    corrected_text: str
+    suggestions: list[dict]
+# --- Structured Outputs用のスキーマ定義 ---
+class SpellCheckSuggestionDetail(BaseModel):
+    type: str = Field(description="指摘の種類（'誤字', '脱字', '文法', '表現', '敬語' のいずれか）")
+    original: str = Field(description="修正対象となる元のテキストの部分")
+    suggestion: str = Field(description="修正案")
+    reason: str = Field(description="修正を提案する具体的な理由")
+
+class SpellCheckStructuredOutput(BaseModel):
+    has_errors: bool = Field(description="1つでも修正すべき点が見つかった場合はtrue、修正点がゼロの場合はfalse")
+    corrected_text: str = Field(description="修正をすべて適用した後の完全なテキスト。has_errorsがfalseの場合は元のテキストをそのまま出力。")
+    suggestions: list[SpellCheckSuggestionDetail] = Field(description="修正提案のリスト。エラーがない場合は空の配列。")
+
+@app.post("/spell-check")
+async def check_spelling(request: SpellCheckRequest):
+    """
+    タイトルまたは本文の誤字脱字をチェックする
+    """
+    try:
+        # APIキーとクライアントの確認
+        if not OPENAI_API_KEY or not client:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "SERVICE_UNAVAILABLE",
+                    "message": "誤字脱字チェック機能は現在利用できません（APIキー未設定）"
+                }
+            )
+        print(request.text)
+        
+        if not request.text or not request.text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "EMPTY_TEXT", "message": "Text is required"}
+            )
+        
+        # --- プロンプトの明確化（一文単位の分割処理とマルチパス・スキャンの強制） ---
+        base_prompt = """あなたは「超高精度校正エンジン」です。文脈による推測を排除し、一文字ずつの文字コードを照合するレベルで厳密な校正を行います。
+
+【処理プロセス（内部ステップ）】
+1. 入力テキストを一単語ずつ独立したタスクとしてスキャンしてください。
+2. 各文に対し、以下の3層の検証を必ず実行し、すべての誤字脱字を過不足なく抽出してください：
+   - 層A：カタカナ表記（長音符「ー」の欠落や不要な追加等）、固有名詞、専門用語。
+   - 層B：助詞（てにをは）の不自然な連続・欠落、同音異義語の誤変換（「機会」と「機械」、「自信」と「自身」等）。
+   - 層C：論理整合性（日付、曜日、時間の矛盾）およびその他の全般的な誤字脱字。
+
+【厳守するルール】
+- 元のテキストの意図、事実関係、段落構成、改行位置は絶対にそのまま保持すること。
+- 指摘箇所が複数ある場合は、必ずすべて網羅すること。
+- 修正すべき箇所が一切ない場合のみ、has_errorsをfalseとしてください。
+-プレスリリスは誤字で正しくはプレスリリースである。もし存在する場合は必ずこれを指摘してください。
+"""
+
+        if request.text_type == "title":
+            system_prompt = base_prompt + "\n対象はプレスリリースの「タイトル」です。簡潔かつ正確な表現が求められます。"
+        else:
+            system_prompt = base_prompt + "\n対象はプレスリリースの「本文」です。上記に加え、正しい敬語（尊敬語、謙譲語、丁寧語）が使われているかも厳格にチェックしてください。"
+
+        # Structured Outputsを利用 (parseメソッドを使用し、Pydanticモデルを渡す)
+        response = client.beta.chat.completions.parse(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"以下のテキストを厳密に校正してください：\n\n{request.text}"}
+            ],
+            response_format=SpellCheckStructuredOutput,
+        )
+        print(response.choices[0].message.parsed)
+        
+        # パースされたオブジェクトを取得
+        result = response.choices[0].message.parsed
+        
+        return {
+            "has_errors": result.has_errors,
+            "corrected_text": result.corrected_text,
+            "suggestions": [suggestion.model_dump() for suggestion in result.suggestions]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"誤字脱字チェックエラー: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "SPELL_CHECK_ERROR", "message": f"誤字脱字チェックに失敗しました: {str(e)}"}
+        )
