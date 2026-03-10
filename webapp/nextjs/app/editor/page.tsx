@@ -35,8 +35,7 @@ import {
   RotateCwIcon,
 } from 'lucide-react';
 import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
-
-
+import { EditorHelpGuide } from './_components/editor-help-guide';
 
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
@@ -235,6 +234,12 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const [errorMessage, setErrorMessage] = useState('');
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [templateStatus, setTemplateStatus] = useState<string | null>(null);
+  const [editorDocument, setEditorDocument] = useState<JsonNode>(initialContent as JsonNode);
+  const [hasLoadedTemplate, setHasLoadedTemplate] = useState(false);
+  const [hasSavedTemplate, setHasSavedTemplate] = useState(false);
+  const [hasUsedSaveShortcut, setHasUsedSaveShortcut] = useState(false);
+  const [hasUsedFormatShortcut, setHasUsedFormatShortcut] = useState(false);
+  const [hasUsedHistoryShortcut, setHasUsedHistoryShortcut] = useState(false);
   const { isPending, mutate } = useSaveMutation();
   const { data: templates = [], isPending: isTemplateListPending } = useTemplateListQuery();
   const createTemplateMutation = useCreateTemplateMutation();
@@ -362,9 +367,11 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     immediatelyRender: false,
     onCreate: ({ editor }) => {
       setContentCount(editor.getText().length);
+      setEditorDocument(editor.getJSON() as JsonNode);
     },
     onUpdate: ({ editor }) => {
       setContentCount(editor.getText().length);
+      setEditorDocument(editor.getJSON() as JsonNode);
       console.log("onUpdate");
       if (errorMessage) {
         setErrorMessage('');
@@ -378,25 +385,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     if (errorMessage) {
       setErrorMessage('');
     }
-  };
-
-  const validateBeforeSave = (): boolean => {
-    const errors: string[] = [];
-
-    if (titleCount > MAX_TITLE_LENGTH) {
-      errors.push(`タイトルが${MAX_TITLE_LENGTH}文字を超えています（現在${titleCount}文字）`);
-    }
-
-    if (contentCount > MAX_CONTENT_LENGTH) {
-      errors.push(`本文が${MAX_CONTENT_LENGTH}文字を超えています（現在${contentCount}文字）`);
-    }
-
-    if (errors.length > 0) {
-      setErrorMessage(errors.join('\n'));
-      return false;
-    }
-
-    return true;
   };
 
   editorRef.current = editor;
@@ -423,6 +411,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       }
 
       event.preventDefault();
+      setHasUsedSaveShortcut(true);
       handleSave();
     };
 
@@ -431,6 +420,29 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleSave]);
+
+  useEffect(() => {
+    const handleShortcutUsage = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !editor?.isFocused) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === 'b' || key === 'i' || key === 'u') {
+        setHasUsedFormatShortcut(true);
+        return;
+      }
+
+      if (key === 'z' || key === 'y') {
+        setHasUsedHistoryShortcut(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcutUsage);
+    return () => {
+      window.removeEventListener('keydown', handleShortcutUsage);
+    };
+  }, [editor]);
 
   const handleSaveTemplate = () => {
     if (!editor) return;
@@ -451,6 +463,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         onSuccess: (template) => {
           setSelectedTemplateId(String(template.id));
           setTemplateName('');
+          setHasSavedTemplate(true);
           setTemplateStatus(`"${template.name}" をテンプレートとして保存しました`);
         },
         onError: (error) => {
@@ -474,6 +487,7 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
         try {
           editor.commands.setContent(JSON.parse(template.content));
           setTitle(template.title);
+          setHasLoadedTemplate(true);
           setTemplateStatus(`"${template.name}" を読み込みました`);
         } catch {
           setTemplateStatus('テンプレート本文の解析に失敗しました');
@@ -611,7 +625,6 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     setIsDraggingImage(false);
   }, []);
 
-
   if (!editor) {
     return null;
   }
@@ -625,6 +638,23 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
           タイトル: {titleCount}/{MAX_TITLE_LENGTH}文字 / 本文: {contentCount}/{MAX_CONTENT_LENGTH}文字
         </div>
         <div className={styles.headerActions}>
+          <EditorHelpGuide
+            title={title}
+            titleCount={titleCount}
+            contentCount={contentCount}
+            editorDocument={editorDocument}
+            maxTitleLength={MAX_TITLE_LENGTH}
+            maxContentLength={MAX_CONTENT_LENGTH}
+            templateGuideState={{
+              hasLoadedTemplate,
+              hasSavedTemplate,
+            }}
+            keyboardShortcutGuideState={{
+              hasUsedSaveShortcut,
+              hasUsedFormatShortcut,
+              hasUsedHistoryShortcut,
+            }}
+          />
           <input
             ref={importFileInputRef}
             type="file"
