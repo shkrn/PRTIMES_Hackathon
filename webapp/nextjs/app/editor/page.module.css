@@ -21,6 +21,11 @@
   font-size: 1.5rem;
 }
 
+.charCounter {
+  color: #475569;
+  font-size: 0.95rem;
+}
+
 .saveButton {
   padding: 0.5rem 1.5rem;
   font-size: 1rem;
@@ -68,6 +73,14 @@
   flex: 1;
   padding: 2rem;
   overflow: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.editorColumn {
+  min-width: 0;
 }
 
 .templatePanel {
@@ -123,6 +136,11 @@
 .secondaryButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.isActive {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
 }
 
 .editorWrapper {
@@ -266,6 +284,11 @@
 
 
 @media (max-width: 768px) {
+  .main {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+
   .header {
     align-items: flex-start;
   }

@@ -13,6 +13,8 @@ import {
   type NodeWithPos,
 } from "@tiptap/react"
 
+import type { TipTapNode } from "@/lib/types"
+
 export const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
 export const MAC_SYMBOLS: Record<string, string> = {
@@ -407,7 +409,6 @@ type ProtocolOptions = {
 type ProtocolConfig = Array<ProtocolOptions | string>
 
 const ATTR_WHITESPACE =
-  // eslint-disable-next-line no-control-regex
   /[\u0000-\u0020\u00A0\u1680\u180E\u2000-\u2029\u205F\u3000]/g
 
 export function isAllowedUri(
@@ -442,7 +443,6 @@ export function isAllowedUri(
     !uri ||
     uri.replace(ATTR_WHITESPACE, "").match(
       new RegExp(
-        // eslint-disable-next-line no-useless-escape
         `^(?:(?:${allowedProtocols.join("|")}):|[^a-z]|[a-z0-9+.\-]+(?:[^a-z+.\-:]|$))`,
         "i"
       )
@@ -630,4 +630,48 @@ export function getSelectedBlockNodes(editor: Editor): PMNode[] {
   })
 
   return blocks
+}
+
+export function extractPlainTextFromTiptapNode(node: TipTapNode | null | undefined): string {
+  if (!node) return ""
+
+  if (node.type === "text") {
+    return node.text ?? ""
+  }
+
+  const childText = (node.content ?? [])
+    .map((child) => extractPlainTextFromTiptapNode(child))
+    .join("")
+
+  if (["paragraph", "heading", "listItem"].includes(node.type)) {
+    return `${childText}\n\n`
+  }
+
+  return childText
+}
+
+export function extractPlainTextFromTiptapDocument(document: TipTapNode | null | undefined): string {
+  return extractPlainTextFromTiptapNode(document).replace(/\n{3,}/g, "\n\n").trim()
+}
+
+export function plainTextToTiptapDocument(text: string): TipTapNode {
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+
+  if (paragraphs.length === 0) {
+    return {
+      type: "doc",
+      content: [{ type: "paragraph", content: [] }],
+    }
+  }
+
+  return {
+    type: "doc",
+    content: paragraphs.map((paragraph) => ({
+      type: "paragraph",
+      content: [{ type: "text", text: paragraph }],
+    })),
+  }
 }

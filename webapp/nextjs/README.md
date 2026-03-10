@@ -32,6 +32,13 @@ docker compose up -d db
 npm run dev
 ```
 
+リポジトリ最上位に `.env` を作成し、Python バックエンド用の OpenAI 設定を置いてください。
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+```
+
 必要に応じて `.env.local` にバックエンド API の接続先を指定してください。
 
 ```bash
@@ -51,6 +58,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
 
 - `GET http://localhost:8080/press-releases/:id`
 - `POST http://localhost:8080/press-releases/:id`
+- `POST http://localhost:8080/assistant/chat`
 - `POST http://localhost:8080/uploads/images`
 - `GET http://localhost:8080/uploads/:fileName`
 

@@ -16,7 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
 from psycopg.rows import dict_row
-from schemas import TemplatePayload
+from openai_service import AssistantServiceError, generate_assistant_reply
+from schemas import AssistantChatRequest, TemplatePayload
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 MAX_IMAGE_EDGE = 600
@@ -112,6 +113,8 @@ def serialize_template(row: dict) -> dict:
     row["created_at"] = format_timestamp(row["created_at"])
     row["updated_at"] = format_timestamp(row["updated_at"])
     return row
+
+
 def resize_image_if_needed(content_type: str, file_bytes: bytes) -> bytes:
     """JPEG/PNG は最大辺 600px へ縮小し、GIF はそのまま保存する"""
     if content_type == "image/gif":
@@ -335,6 +338,28 @@ async def get_template(id: str):
             status_code=500,
             detail={"code": "INTERNAL_ERROR", "message": "Internal server error"}
         )
+
+
+@app.post("/assistant/chat")
+async def assistant_chat(payload: AssistantChatRequest):
+    """OpenAI を使ってプレスリリース下書き作成の会話を進める"""
+    try:
+        return (await generate_assistant_reply(payload)).model_dump()
+    except AssistantServiceError as exc:
+        status_code = 500 if exc.code == "OPENAI_API_KEY_MISSING" else 502
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "message": "Internal server error"},
+        ) from exc
+
+
 @app.post("/uploads/images", status_code=201)
 async def upload_image(request: Request, file: UploadFile = File(...)):
     """画像をアップロードし、必要に応じて縮小して公開URLを返す"""
