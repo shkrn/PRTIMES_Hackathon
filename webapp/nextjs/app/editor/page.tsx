@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef, useEffect, type ChangeEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent, type Editor as TiptapEditor } from '@tiptap/react';
+import { toast } from 'sonner';
 import Document from '@tiptap/extension-document';
 import Heading from '@tiptap/extension-heading';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -158,7 +159,6 @@ function useSaveMutation() {
       return response.json();
     },
     onSuccess: () => {
-      alert('保存しました');
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (error: Error) => alert(`エラー: ${error.message}`),
@@ -409,6 +409,10 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
     mutate({
       title,
       content: JSON.stringify(syncLinkHrefs(editor.getJSON() as JsonNode)),
+    }, {
+      onSuccess: () => {
+        toast.success('保存しました');
+      },
     });
   }, [editor, mutate, title]);
 

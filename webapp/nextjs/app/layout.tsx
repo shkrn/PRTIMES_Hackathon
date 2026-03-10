@@ -3,6 +3,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <QueryClientProvider client={queryClient}>
           {children}
+          <Toaster position="bottom-right" richColors closeButton />
         </QueryClientProvider>
       </body>
     </html>
