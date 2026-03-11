@@ -3,3 +3,4 @@ webapp/nextjs/.next/
 webapp/nextjs/next-env.d.ts
 webapp/nextjs/public/uploads/
 webapp/.env
+.env
