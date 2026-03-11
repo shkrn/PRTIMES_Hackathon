@@ -63,7 +63,7 @@ async def generate_assistant_reply(payload: AssistantChatRequest) -> AssistantCh
     if not api_key:
         raise AssistantServiceError("OPENAI_API_KEY_MISSING", "OPENAI_API_KEY is not configured")
 
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    model = os.getenv("OPENAI_API_MODEL", "gpt-4o-mini")
     client = AsyncOpenAI(api_key=api_key)
     messages = [
         {"role": "system", "content": build_system_prompt()},
