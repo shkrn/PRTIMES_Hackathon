@@ -259,6 +259,8 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const [hasUsedSaveShortcut, setHasUsedSaveShortcut] = useState(false);
   const [hasUsedFormatShortcut, setHasUsedFormatShortcut] = useState(false);
   const [hasUsedHistoryShortcut, setHasUsedHistoryShortcut] = useState(false);
+  const [hasGeneratedAiDraft, setHasGeneratedAiDraft] = useState(false);
+  const [hasUsedAiSpellCheck, setHasUsedAiSpellCheck] = useState(false);
   const { isPending, mutate } = useSaveMutation();
   const { data: templates = [], isPending: isTemplateListPending } = useTemplateListQuery();
   const createTemplateMutation = useCreateTemplateMutation();
@@ -341,6 +343,7 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
       }
 
       const result: SpellCheckResult = await response.json();
+      setHasUsedAiSpellCheck(true);
       setSpellCheckResult(result);
       setShowSpellCheckModal(true);
 
@@ -778,9 +781,16 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
 
     editor.commands.setContent(plainTextToTiptapDocument(assistantDraft.content));
     setTitle(assistantDraft.title);
+    setHasGeneratedAiDraft(true);
     setTemplateStatus('AI の下書きを本文へ反映しました');
     clearDraft();
   }, [assistantDraft, clearDraft, editor]);
+
+  useEffect(() => {
+    if (assistantDraft) {
+      setHasGeneratedAiDraft(true);
+    }
+  }, [assistantDraft]);
 
 
   if (!editor) {
@@ -811,6 +821,10 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
               hasUsedSaveShortcut,
               hasUsedFormatShortcut,
               hasUsedHistoryShortcut,
+            }}
+            aiGuideState={{
+              hasGeneratedDraft: hasGeneratedAiDraft,
+              hasUsedSpellCheck: hasUsedAiSpellCheck,
             }}
           />
           <button 

@@ -2,13 +2,22 @@ export const HELP_ROOT_ID = 'help-root' as const;
 export const HELP_STORAGE_KEY = 'prtimes-editor-help-checks';
 
 export type HelpBranchId = string;
-export type ManualHelpCheckId = 'audience' | 'newsValue' | 'leadSummary' | 'cta' | 'proofread' | 'address' | 'season';
+export type ManualHelpCheckId =
+  | 'audience'
+  | 'newsValue'
+  | 'leadSummary'
+  | 'cta'
+  | 'proofread'
+  | 'address'
+  | 'season';
 export type AutoHelpCheckId =
   | 'titleLength'
   | 'bodyLength'
   | 'hasList'
   | 'hasImage'
   | 'hasLink'
+  | 'aiDraftGenerated'
+  | 'aiSpellCheck'
   | 'saveShortcut'
   | 'formatShortcut'
   | 'historyShortcut'
@@ -67,6 +76,10 @@ export type KeyboardShortcutGuideState = {
   hasUsedSaveShortcut: boolean;
   hasUsedFormatShortcut: boolean;
   hasUsedHistoryShortcut: boolean;
+};
+export type AiGuideState = {
+  hasGeneratedDraft: boolean;
+  hasUsedSpellCheck: boolean;
 };
 
 type HelpDocument = Record<string, unknown>;
@@ -171,6 +184,29 @@ export const HELP_BRANCHES: HelpBranch[] = [
         title: '再利用しやすい形でテンプレート保存した',
         detail:
           '今後も使い回す見出し構成や本文の型ができたら、分かりやすい名前でテンプレート保存してください。チーム内での再利用や次回作成の短縮に役立ちます。',
+        kind: 'auto',
+      },
+    ],
+  },
+  {
+    id: 'ai-tools',
+    title: 'AI機能',
+    summary: '作成支援チャットと誤字脱字チェックを使うと、下書き作成と公開前確認が速くなります。',
+    detail:
+      'AI 機能は、本文のたたき台づくりと最終チェックで役割が分かれています。作成支援チャットで下書きを作り、公開前に誤字脱字チェックを回す流れで使うと安定します。',
+    items: [
+      {
+        id: 'aiDraftGenerated',
+        title: '作成支援チャットで下書きを作成した',
+        detail:
+          '右側の作成支援チャットに発表内容を送ると、AI が不足情報を確認しながら本文下書きを作成します。下書きカードが出たら「本文へ反映」でそのまま編集に戻れます。',
+        kind: 'auto',
+      },
+      {
+        id: 'aiSpellCheck',
+        title: 'AIの誤字脱字チェックを実行した',
+        detail:
+          'タイトルまたは本文の「チェック」ボタンを使って、公開前に一度 AI の誤字脱字チェックを実行してください。固有名詞や日付の見落としを減らせます。',
         kind: 'auto',
       },
     ],
@@ -346,6 +382,7 @@ type BuildAutoHelpChecksOptions = {
   editorDocument: HelpDocument;
   templateGuideState: TemplateGuideState;
   keyboardShortcutGuideState: KeyboardShortcutGuideState;
+  aiGuideState: AiGuideState;
 };
 
 export function buildAutoHelpChecks({
@@ -357,6 +394,7 @@ export function buildAutoHelpChecks({
   editorDocument,
   templateGuideState,
   keyboardShortcutGuideState,
+  aiGuideState,
 }: BuildAutoHelpChecksOptions): AutoHelpChecks {
   const trimmedTitleCount = title.trim().length;
 
@@ -366,6 +404,8 @@ export function buildAutoHelpChecks({
     hasList: hasNodeType(editorDocument, 'bulletList') || hasNodeType(editorDocument, 'orderedList'),
     hasImage: hasNodeType(editorDocument, 'image'),
     hasLink: hasMarkType(editorDocument, 'link'),
+    aiDraftGenerated: aiGuideState.hasGeneratedDraft,
+    aiSpellCheck: aiGuideState.hasUsedSpellCheck,
     saveShortcut: keyboardShortcutGuideState.hasUsedSaveShortcut,
     formatShortcut: keyboardShortcutGuideState.hasUsedFormatShortcut,
     historyShortcut: keyboardShortcutGuideState.hasUsedHistoryShortcut,
@@ -402,6 +442,8 @@ export function buildHelpStatusText({
     hasList: autoHelpChecks.hasList ? '箇条書きあり' : '箇条書きなし',
     hasImage: autoHelpChecks.hasImage ? '画像あり' : '画像なし',
     hasLink: autoHelpChecks.hasLink ? 'リンクあり' : 'リンクなし',
+    aiDraftGenerated: autoHelpChecks.aiDraftGenerated ? '作成済み' : '未作成',
+    aiSpellCheck: autoHelpChecks.aiSpellCheck ? '実行済み' : '未実行',
     saveShortcut: autoHelpChecks.saveShortcut ? '使用済み' : '未使用',
     formatShortcut: autoHelpChecks.formatShortcut ? '使用済み' : '未使用',
     historyShortcut: autoHelpChecks.historyShortcut ? '使用済み' : '未使用',

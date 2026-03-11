@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  type AiGuideState,
   collectPendingHelpItems,
   DEFAULT_MANUAL_HELP_CHECKS,
   HELP_BRANCHES,
@@ -34,6 +35,7 @@ type EditorHelpGuideProps = {
   maxContentLength: number;
   templateGuideState: TemplateGuideState;
   keyboardShortcutGuideState: KeyboardShortcutGuideState;
+  aiGuideState: AiGuideState;
 };
 
 function loadManualHelpChecks(): ManualHelpChecks {
@@ -62,6 +64,7 @@ export function EditorHelpGuide({
   maxContentLength,
   templateGuideState,
   keyboardShortcutGuideState,
+  aiGuideState,
 }: EditorHelpGuideProps) {
   const [manualHelpChecks, setManualHelpChecks] = useState<ManualHelpChecks>(loadManualHelpChecks);
   const [isOpen, setIsOpen] = useState(false);
@@ -101,6 +104,7 @@ export function EditorHelpGuide({
     editorDocument,
     templateGuideState,
     keyboardShortcutGuideState,
+    aiGuideState,
   });
   const helpStatusText = buildHelpStatusText({
     manualHelpChecks,
