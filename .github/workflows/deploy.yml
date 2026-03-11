@@ -12,8 +12,11 @@ jobs:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
+        request_pty: false
         script: |
           cd ~ || exit 1
+          pkill -f "next dev" || true
+          sleep 2
           rm -rf PRTIMES_Hackathon
           #Backend
           git clone https://github.com/shkrn/PRTIMES_Hackathon.git
@@ -24,11 +27,14 @@ jobs:
           #Frontend
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          npm install -g pm2 --silent
           cd nextjs
           npm ci
           EC2_IP=$(curl -s ifconfig.me)
-          export NEXT_PUBLIC_API_BASE_URL="http://${EC2_IP}:8080"
-          nohup npm run dev > nextjs.log 2>&1 &
-          echo "Frontend Deploy complete! Check http://$(curl -s ifconfig.me):3000"
+          NEXT_PUBLIC_API_BASE_URL="http://${EC2_IP}:8080" pm2 delete nextjs || true
+          NEXT_PUBLIC_API_BASE_URL="http://${EC2_IP}:8080" pm2 start npm --name "nextjs" -- run dev
+          pm2 save
+          sleep 5
+          echo "Frontend Deploy complete! Check http://${EC2_IP}:3000"
 
 
