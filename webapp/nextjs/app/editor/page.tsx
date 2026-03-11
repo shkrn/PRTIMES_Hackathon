@@ -11,6 +11,7 @@ import { BulletList, ListItem, OrderedList } from '@tiptap/extension-list';
 import Link from '@tiptap/extension-link';
 import History from '@tiptap/extension-history';
 import type {
+  TipTapNode,
   PressRelease,
   PressReleaseTemplate,
   PressReleaseTemplateSummary,
@@ -35,12 +36,17 @@ import {
   RotateCwIcon,
 } from 'lucide-react';
 import { IMPORT_ACCEPT, importDocumentFile } from './import-utils';
+import { ChatPanel } from '@/components/chat-assistant/ChatPanel';
+import { useChatAssistant } from '@/hooks/use-chat-assistant';
+import { extractPlainTextFromTiptapDocument, plainTextToTiptapDocument } from '@/lib/tiptap-utils';
 import { EditorHelpGuide } from './_components/editor-help-guide';
 
 const PRESS_RELEASE_ID = 1;
 const queryKey = ['press-release', PRESS_RELEASE_ID];
 const templateListQueryKey = ['press-release-templates'];
-const DEFAULT_API_BASE_URL = 'http://localhost:8080';
+const DEFAULT_API_BASE_URL = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.hostname}:8080`
+  : 'http://localhost:8080';
 // 文字数制限の定数
 const MAX_TITLE_LENGTH = 100;
 const MAX_CONTENT_LENGTH = 500;
@@ -263,6 +269,31 @@ function Editor({ initialTitle, initialContent }: { initialTitle: string; initia
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const editorRef = useRef<TiptapEditor | null>(null);
   const dragDepthRef = useRef(0);
+
+  const getCurrentDraftContext = useCallback(() => {
+    const currentDocument = editorRef.current?.getJSON() as TipTapNode | undefined;
+
+    return {
+      title,
+      contentText: extractPlainTextFromTiptapDocument(currentDocument),
+      language: 'ja',
+    };
+  }, [title]);
+
+  const {
+    messages: assistantMessages,
+    draft: assistantDraft,
+    followUpQuestions,
+    missingFields,
+    isPending: isAssistantPending,
+    errorMessage: assistantErrorMessage,
+    sendMessage,
+    clearDraft,
+  } = useChatAssistant({
+    apiBaseUrl: API_BASE_URL,
+    pressReleaseId: PRESS_RELEASE_ID,
+    getCurrentDraftContext,
+  });
   // Editorコンポーネント内に追加
 const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | null>(null);
 
@@ -480,6 +511,25 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
     }
   };
 
+  const validateBeforeSave = (): boolean => {
+  const errors: string[] = [];
+
+    if (titleCount > MAX_TITLE_LENGTH) {
+    errors.push(`タイトルが${MAX_TITLE_LENGTH}文字を超えています（現在${titleCount}文字）`);
+      }
+
+    if (contentCount > MAX_CONTENT_LENGTH) {
+    errors.push(`本文が${MAX_CONTENT_LENGTH}文字を超えています（現在${contentCount}文字）`);
+      }
+
+    if (errors.length > 0) {
+      setErrorMessage(errors.join('\n'));
+      return false;
+    }
+
+    return true;
+  };
+
   editorRef.current = editor;
 
   const handleSave = useCallback(() => {
@@ -490,7 +540,6 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
       return;
     }
 
-    // エラーがなければ保存
     setErrorMessage('');
     mutate({
       title,
@@ -722,6 +771,17 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
     dragDepthRef.current = 0;
     setIsDraggingImage(false);
   }, []);
+  const applyAssistantDraft = useCallback(() => {
+    if (!editor || !assistantDraft) {
+      return;
+    }
+
+    editor.commands.setContent(plainTextToTiptapDocument(assistantDraft.content));
+    setTitle(assistantDraft.title);
+    setTemplateStatus('AI の下書きを本文へ反映しました');
+    clearDraft();
+  }, [assistantDraft, clearDraft, editor]);
+
 
   if (!editor) {
     return null;
@@ -841,170 +901,196 @@ const [activeCheckType, setActiveCheckType] = useState<'title' | 'content' | nul
         </div>
       )}
       <main className={styles.main}>
-        <section className={styles.templatePanel}>
-          <div className={styles.templateControls}>
-            <input
-              type="text"
-              value={templateName}
-              onChange={(event) => setTemplateName(event.target.value)}
-              placeholder="テンプレート名"
-              className={styles.templateInput}
-            />
-            <button
-              type="button"
-              onClick={handleSaveTemplate}
-              className={styles.secondaryButton}
-              disabled={createTemplateMutation.isPending}
-            >
-              {createTemplateMutation.isPending ? '保存中...' : 'テンプレート保存'}
-            </button>
-          </div>
-          <div className={styles.templateControls}>
-            <select
-              value={selectedTemplateId}
-              onChange={(event) => setSelectedTemplateId(event.target.value)}
-              className={styles.templateSelect}
-              disabled={isTemplateListPending || templates.length === 0}
-            >
-              <option value="">
-                {isTemplateListPending ? 'テンプレートを読み込み中...' : 'テンプレートを選択'}
-              </option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
+        <div className={styles.editorColumn}>
+          <section className={styles.templatePanel}>
+            <div className={styles.templateControls}>
+              <input
+                type="text"
+                value={templateName}
+                onChange={(event) => setTemplateName(event.target.value)}
+                placeholder="テンプレート名"
+                className={styles.templateInput}
+              />
+              <button
+                type="button"
+                onClick={handleSaveTemplate}
+                className={styles.secondaryButton}
+                disabled={createTemplateMutation.isPending}
+              >
+                {createTemplateMutation.isPending ? '保存中...' : 'テンプレート保存'}
+              </button>
+            </div>
+            <div className={styles.templateControls}>
+              <select
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+                className={styles.templateSelect}
+                disabled={isTemplateListPending || templates.length === 0}
+              >
+                <option value="">
+                  {isTemplateListPending ? 'テンプレートを読み込み中...' : 'テンプレートを選択'}
                 </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={handleLoadTemplate}
-              className={styles.secondaryButton}
-              disabled={loadTemplateMutation.isPending || templates.length === 0}
-            >
-              {loadTemplateMutation.isPending ? '読込中...' : 'テンプレート読込'}
-            </button>
-          </div>
-          {templateStatus ? <p className={styles.templateStatus}>{templateStatus}</p> : null}
-        </section>
-        <div
-          className={`${styles.editorWrapper} ${isDraggingImage ? styles.editorWrapperDragging : ''}`}
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDropZoneDrop}
-        >
-          <Toolbar>
-            <ToolbarGroup>
-              <Button
-                data-style="ghost"
-                onClick={() => editor.chain().focus().undo().run()}
-                disabled={!editor.can().chain().focus().undo().run()}
-                shortcutKeys="mod+z"
-                tooltip="元に戻す (Cmd/Ctrl+Z)"
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleLoadTemplate}
+                className={styles.secondaryButton}
+                disabled={loadTemplateMutation.isPending || templates.length === 0}
               >
-                <RotateCcwIcon className="tiptap-button-icon" />
-              </Button>
-              <Button
-                data-style="ghost"
-                onClick={() => editor.chain().focus().redo().run()}
-                disabled={!editor.can().chain().focus().redo().run()}
-                shortcutKeys="shift+mod+z"
-                tooltip="やり直し (Shift+Cmd/Ctrl+Z)"
-              >
-                <RotateCwIcon className="tiptap-button-icon" />
-              </Button>
-            </ToolbarGroup>
+                {loadTemplateMutation.isPending ? '読込中...' : 'テンプレート読込'}
+              </button>
+            </div>
+            {templateStatus ? <p className={styles.templateStatus}>{templateStatus}</p> : null}
+          </section>
+          <div
+            className={`${styles.editorWrapper} ${isDraggingImage ? styles.editorWrapperDragging : ''}`}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDropZoneDrop}
+          >
+            <Toolbar>
+              <ToolbarGroup>
+                <Button
+                  data-style="ghost"
+                  onClick={() => editor.chain().focus().undo().run()}
+                  disabled={!editor.can().chain().focus().undo().run()}
+                  shortcutKeys="mod+z"
+                  tooltip="元に戻す (Cmd/Ctrl+Z)"
+                >
+                  <RotateCcwIcon className="tiptap-button-icon" />
+                </Button>
+                <Button
+                  data-style="ghost"
+                  onClick={() => editor.chain().focus().redo().run()}
+                  disabled={!editor.can().chain().focus().redo().run()}
+                  shortcutKeys="shift+mod+z"
+                  tooltip="やり直し (Shift+Cmd/Ctrl+Z)"
+                >
+                  <RotateCwIcon className="tiptap-button-icon" />
+                </Button>
+              </ToolbarGroup>
 
-            <ToolbarSeparator />
+              <ToolbarSeparator />
 
-            <ToolbarGroup>
-              <Button data-style="ghost" 
+              <ToolbarGroup>
+                <Button
+                  data-style="ghost"
                   onClick={() => editor.chain().focus().toggleBold().run()}
                   disabled={!editor.can().chain().focus().toggleBold().run()}
                   className={editor.isActive('bold') ? styles.isActive : ''}
                   shortcutKeys="mod+b"
                   tooltip="太字"
                 >
-                <BoldIcon className="tiptap-button-icon" />
-              </Button>
-              <Button data-style="ghost"
+                  <BoldIcon className="tiptap-button-icon" />
+                </Button>
+                <Button
+                  data-style="ghost"
                   onClick={() => editor.chain().focus().toggleItalic().run()}
                   disabled={!editor.can().chain().focus().toggleItalic().run()}
                   className={editor.isActive('italic') ? styles.isActive : ''}
                   shortcutKeys="mod+i"
                   tooltip="斜体"
                 >
-                <ItalicIcon className="tiptap-button-icon" />
-              </Button>
-              <Button data-style="ghost"
+                  <ItalicIcon className="tiptap-button-icon" />
+                </Button>
+                <Button
+                  data-style="ghost"
                   onClick={() => editor.chain().focus().toggleUnderline().run()}
                   disabled={!editor.can().chain().focus().toggleUnderline().run()}
                   className={editor.isActive('underline') ? styles.isActive : ''}
                   shortcutKeys="mod+u"
                   tooltip="下線"
                 >
-                <UnderlineIcon className="tiptap-button-icon" />
-              </Button>
-            </ToolbarGroup>
+                  <UnderlineIcon className="tiptap-button-icon" />
+                </Button>
+              </ToolbarGroup>
 
-            <ToolbarSeparator />
+              <ToolbarSeparator />
 
-            <ToolbarGroup>
-              <Button data-style="ghost"
+              <ToolbarGroup>
+                <Button
+                  data-style="ghost"
                   onClick={() => editor.chain().focus().toggleBulletList().run()}
                   disabled={!editor.can().chain().focus().toggleBulletList().run()}
                   className={editor.isActive('bulletList') ? styles.isActive : ''}
                   tooltip="箇条書き"
                 >
-                <ListIcon className="tiptap-button-icon" />
-              </Button>
-              <Button data-style="ghost"
+                  <ListIcon className="tiptap-button-icon" />
+                </Button>
+                <Button
+                  data-style="ghost"
                   onClick={() => editor.chain().focus().toggleOrderedList().run()}
                   disabled={!editor.can().chain().focus().toggleOrderedList().run()}
                   className={editor.isActive('orderedList') ? styles.isActive : ''}
                   tooltip="番号付きリスト"
                 >
-                <ListOrderedIcon className="tiptap-button-icon" />
-              </Button>
-            </ToolbarGroup>
+                  <ListOrderedIcon className="tiptap-button-icon" />
+                </Button>
+              </ToolbarGroup>
 
-            <ToolbarSeparator />
+              <ToolbarSeparator />
 
-            <ToolbarGroup>
-              <Button data-style="ghost" onClick={openImagePicker} disabled={isUploadingImage} tooltip="画像をアップロード">
-                <ImageIcon className="tiptap-button-icon" />
-              </Button>
-              <Button data-style="ghost" onClick={insertImageByUrl} disabled={isUploadingImage} tooltip="画像URLを挿入">
-                <LinkIcon className="tiptap-button-icon" />
-              </Button>
-            </ToolbarGroup>
-          </Toolbar>
+              <ToolbarGroup>
+                <Button
+                  data-style="ghost"
+                  onClick={openImagePicker}
+                  disabled={isUploadingImage}
+                  tooltip="画像を挿入"
+                >
+                  <ImageIcon className="tiptap-button-icon" />
+                </Button>
+                <Button
+                  data-style="ghost"
+                  onClick={insertImageByUrl}
+                  disabled={isUploadingImage}
+                  tooltip="URLから画像を挿入"
+                >
+                  <LinkIcon className="tiptap-button-icon" />
+                </Button>
+              </ToolbarGroup>
+            </Toolbar>
 
-          <input
-            ref={imageFileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/gif"
-            className={styles.hiddenInput}
-            onChange={handleImageSelection}
-          />
-
-          {isUploadingImage ? <p className={styles.uploadingNotice}>画像をアップロード中...</p> : null}
-          {isDraggingImage ? <p className={styles.dropNotice}>ここに画像をドロップしてアップロード</p> : null}
-          {/* {!isDraggingImage ? <p className={styles.dropHint}>画像をドラッグ&ドロップ、またはツールバーからアップロードできます</p> : null} */}
-
-          <div className={styles.titleInputWrapper}>
             <input
-              type="text"
-              value={title}
-              onChange={handleTitleChange}
-              placeholder="タイトルを入力してください"
-              className={`${styles.titleInput} ${isTitleOverLimit ? styles.inputError : ''}`}
+              ref={imageFileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif"
+              className={styles.hiddenInput}
+              onChange={handleImageSelection}
             />
-          </div>
 
+            {isUploadingImage ? <p className={styles.uploadingNotice}>画像をアップロード中...</p> : null}
+            {isDraggingImage ? <p className={styles.dropNotice}>ここに画像をドロップしてアップロード</p> : null}
+
+            <div className={styles.titleInputWrapper}>
+              <input
+                type="text"
+                value={title}
+                onChange={handleTitleChange}
+                placeholder="タイトルを入力してください"
+                className={`${styles.titleInput} ${isTitleOverLimit ? styles.inputError : ''}`}
+              />
+            </div>
 
           <EditorContent editor={editor} />
+          </div>
         </div>
+        <ChatPanel
+          messages={assistantMessages}
+          draft={assistantDraft}
+          followUpQuestions={followUpQuestions}
+          missingFields={missingFields}
+          isPending={isAssistantPending}
+          errorMessage={assistantErrorMessage}
+          onSendMessage={sendMessage}
+          onApplyDraft={applyAssistantDraft}
+          onDismissDraft={clearDraft}
+        />
       </main>
     </div>
   );

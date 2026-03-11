@@ -23,6 +23,55 @@ export interface PressReleaseTemplate extends PressReleaseTemplateSummary {
   content: string;
 }
 
+export type ChatRole = 'user' | 'assistant';
+
+export interface ChatMessage {
+  role: ChatRole;
+  content: string;
+}
+
+export type AssistantStatus = 'asking' | 'draft_ready' | 'error';
+
+export interface DraftContext {
+  title: string;
+  contentText: string;
+  language: string;
+}
+
+export interface AssistantError {
+  code: string;
+  message: string;
+}
+
+export interface DraftMeta {
+  format: 'plain_text';
+  version: number;
+}
+
+export interface AssistantChatRequest {
+  pressReleaseId?: number;
+  mode: 'draft';
+  messages: ChatMessage[];
+  currentDraftContext: DraftContext;
+}
+
+export interface AssistantChatResponse {
+  status: AssistantStatus;
+  assistantMessage: string;
+  followUpQuestions: string[];
+  missingFields: string[];
+  draftTitle: string | null;
+  draftContent: string | null;
+  draftMeta: DraftMeta | null;
+  error: AssistantError | null;
+}
+
+export interface AssistantDraft {
+  title: string;
+  content: string;
+  meta: DraftMeta | null;
+}
+
 export interface TipTapContent {
   type: string;
   content?: TipTapNode[];

@@ -32,7 +32,15 @@ docker compose up -d db
 npm run dev
 ```
 
-必要に応じて `.env.local` にバックエンド API の接続先を指定してください。
+`webapp/.env` に共通の環境変数を配置してください。Next.js はこのファイルを追加で読み込みます。
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+PYTHON_API_URL=http://localhost:8080
+```
+
+ブラウザ向けの接続先を変える場合だけ `nextjs/.env.local` を使ってください。
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
@@ -51,6 +59,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
 
 - `GET http://localhost:8080/press-releases/:id`
 - `POST http://localhost:8080/press-releases/:id`
+- `POST http://localhost:8080/assistant/chat`
 - `POST http://localhost:8080/uploads/images`
 - `GET http://localhost:8080/uploads/:fileName`
 

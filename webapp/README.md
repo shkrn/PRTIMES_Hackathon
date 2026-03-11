@@ -15,6 +15,15 @@
 
 ### 1. Docker環境の起動
 
+`webapp/.env` を作成し、OpenAI API キーを設定してください。
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+```
+
+`docker compose` はこの `webapp/.env` を読み込みます。
+
 ```bash
 cd webapp
 docker compose up -d
@@ -133,6 +142,40 @@ docker compose up -d
 ```json
 {
   "url": "http://localhost:8080/uploads/01234567-89ab-cdef-0123-456789abcdef.png"
+}
+```
+
+### POST /assistant/chat
+
+チャット形式でプレスリリース作成を支援します。不足情報がある場合は追加質問を返し、十分な情報が揃うと下書きを返します。
+
+**リクエスト例:**
+```json
+{
+  "pressReleaseId": 1,
+  "mode": "draft",
+  "messages": [
+    { "role": "user", "content": "新サービスのプレスリリースを作りたいです" }
+  ],
+  "currentDraftContext": {
+    "title": "",
+    "contentText": "",
+    "language": "ja"
+  }
+}
+```
+
+**レスポンス例:**
+```json
+{
+  "status": "asking",
+  "assistantMessage": "ありがとうございます。まず、どの会社が何を発表するのか教えてください。",
+  "followUpQuestions": ["どの会社・団体が発表する内容ですか？"],
+  "missingFields": ["companyName", "announcementTitle"],
+  "draftTitle": null,
+  "draftContent": null,
+  "draftMeta": null,
+  "error": null
 }
 ```
 
