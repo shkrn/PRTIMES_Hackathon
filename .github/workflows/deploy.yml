@@ -15,8 +15,10 @@ jobs:
         request_pty: false
         script: |
           cd ~ || exit 1
-          pkill -f "next dev" || true
-          sleep 2
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          npm install -g pm2 --silent
+          pm2 delete nextjs 2>/dev/null || true
           rm -rf PRTIMES_Hackathon
           #Backend
           git clone https://github.com/shkrn/PRTIMES_Hackathon.git
@@ -25,13 +27,9 @@ jobs:
           docker compose up -d --build
           echo "Backend Deploy complete! Check http://$(curl -s ifconfig.me):8080"
           #Frontend
-          export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          npm install -g pm2 --silent
           cd nextjs
           npm ci
           EC2_IP=$(curl -s ifconfig.me)
-          NEXT_PUBLIC_API_BASE_URL="http://${EC2_IP}:8080" pm2 delete nextjs || true
           NEXT_PUBLIC_API_BASE_URL="http://${EC2_IP}:8080" pm2 start npm --name "nextjs" -- run dev
           pm2 save
           sleep 5
