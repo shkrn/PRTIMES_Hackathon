@@ -13,6 +13,7 @@ jobs:
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         request_pty: false
+        envs: OPENAI_API_KEY,OPENAI_API_MODEL
         script: |
           cd ~ || exit 1
           export NVM_DIR="$HOME/.nvm"
@@ -23,6 +24,7 @@ jobs:
           #Backend
           git clone https://github.com/shkrn/PRTIMES_Hackathon.git
           cd PRTIMES_Hackathon/webapp
+          printf 'OPENAI_API_KEY=%s\nOPENAI_API_MODEL=%s\n' "${OPENAI_API_KEY}" "${OPENAI_API_MODEL}" > .env
           docker compose down -v || true
           docker compose up -d --build
           echo "Backend Deploy complete! Check http://$(curl -s ifconfig.me):8080"
