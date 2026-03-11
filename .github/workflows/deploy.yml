@@ -8,27 +8,36 @@ jobs:
     steps:
     - name: Full Deploy
       uses: appleboy/ssh-action@v1.0.3
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        OPENAI_API_MODEL: ${{ secrets.OPENAI_API_MODEL }}
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
+        request_pty: false
+        envs: OPENAI_API_KEY,OPENAI_API_MODEL
         script: |
           cd ~ || exit 1
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          npm install -g pm2 --silent
+          pm2 delete nextjs 2>/dev/null || true
           rm -rf PRTIMES_Hackathon
           #Backend
           git clone https://github.com/shkrn/PRTIMES_Hackathon.git
           cd PRTIMES_Hackathon/webapp
+          printf 'OPENAI_API_KEY=%s\nOPENAI_API_MODEL=%s\n' "${OPENAI_API_KEY}" "${OPENAI_API_MODEL}" > .env
           docker compose down -v || true
           docker compose up -d --build
           echo "Backend Deploy complete! Check http://$(curl -s ifconfig.me):8080"
           #Frontend
-          export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           cd nextjs
           npm ci
           EC2_IP=$(curl -s ifconfig.me)
-          export NEXT_PUBLIC_API_BASE_URL="http://${EC2_IP}:8080"
-          nohup npm run dev > nextjs.log 2>&1 &
-          echo "Frontend Deploy complete! Check http://$(curl -s ifconfig.me):3000"
+          NEXT_PUBLIC_API_BASE_URL="http://${EC2_IP}:8080" pm2 start npm --name "nextjs" -- run dev
+          pm2 save
+          sleep 5
+          echo "Frontend Deploy complete! Check http://${EC2_IP}:3000"
 
 
