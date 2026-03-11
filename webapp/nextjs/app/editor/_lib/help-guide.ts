@@ -2,7 +2,7 @@ export const HELP_ROOT_ID = 'help-root' as const;
 export const HELP_STORAGE_KEY = 'prtimes-editor-help-checks';
 
 export type HelpBranchId = string;
-export type ManualHelpCheckId = 'audience' | 'newsValue' | 'leadSummary' | 'cta' | 'proofread';
+export type ManualHelpCheckId = 'audience' | 'newsValue' | 'leadSummary' | 'cta' | 'proofread' | 'address' | 'season';
 export type AutoHelpCheckId =
   | 'titleLength'
   | 'bodyLength'
@@ -84,6 +84,8 @@ export const MANUAL_HELP_CHECK_IDS: ManualHelpCheckId[] = [
   'leadSummary',
   'cta',
   'proofread',
+  'address',
+  'season',
 ];
 
 export const DEFAULT_MANUAL_HELP_CHECKS: ManualHelpChecks = {
@@ -92,6 +94,8 @@ export const DEFAULT_MANUAL_HELP_CHECKS: ManualHelpChecks = {
   leadSummary: false,
   cta: false,
   proofread: false,
+  address: false,
+  season: false,
 };
 
 export const HELP_BRANCHES: HelpBranch[] = [
@@ -263,6 +267,29 @@ export const HELP_BRANCHES: HelpBranch[] = [
       },
     ],
   },
+  {
+    id: 'one-point',
+    title: 'One Point アドバイス​',
+    summary: 'PRを​より​効果的に​届ける​ヒントを​お伝えします。',
+    detail:
+      'PRを​より​効果的に​届ける​ヒントを​お伝えします。',
+    items: [
+      {
+        id: 'address',
+        title: '住所を​追加した',
+        detail:
+          '活動拠点を​明記する​ことで、​同地域の​方々の​目に​留まりやすくなります。​',
+        kind: 'manual',
+      },
+      {
+        id: 'season',
+        title: '「旬」を​捉え、​共感を​呼ぶ。​',
+        detail:
+          '季節の​イベントや​記念日を​添える​ことで、​「今」と​いう​特別感が​生まれ、​メディアや​地域の​方々に​「自分たちの​ための​ニュースだ」と​身近に​感じて​もらいやすくなります。',
+        kind: 'manual',
+      },
+    ],
+  },
 ];
 
 export const HELP_ITEMS = flattenHelpItems(HELP_BRANCHES);
@@ -380,6 +407,8 @@ export function buildHelpStatusText({
     historyShortcut: autoHelpChecks.historyShortcut ? '使用済み' : '未使用',
     templateLoaded: autoHelpChecks.templateLoaded ? '読込済み' : '未読込',
     templateSaved: autoHelpChecks.templateSaved ? '保存済み' : '未保存',
+    address: manualHelpChecks.address ? 'チェック済み' : '未確認',
+    season: manualHelpChecks.season ? 'チェック済み' : '未確認',
   };
 }
 
