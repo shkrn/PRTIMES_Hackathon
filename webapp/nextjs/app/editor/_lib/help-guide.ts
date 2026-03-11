@@ -2,13 +2,22 @@ export const HELP_ROOT_ID = 'help-root' as const;
 export const HELP_STORAGE_KEY = 'prtimes-editor-help-checks';
 
 export type HelpBranchId = string;
-export type ManualHelpCheckId = 'audience' | 'newsValue' | 'leadSummary' | 'cta' | 'proofread';
+export type ManualHelpCheckId =
+  | 'audience'
+  | 'newsValue'
+  | 'leadSummary'
+  | 'cta'
+  | 'proofread'
+  | 'address'
+  | 'season';
 export type AutoHelpCheckId =
   | 'titleLength'
   | 'bodyLength'
   | 'hasList'
   | 'hasImage'
   | 'hasLink'
+  | 'aiDraftGenerated'
+  | 'aiSpellCheck'
   | 'saveShortcut'
   | 'formatShortcut'
   | 'historyShortcut'
@@ -68,6 +77,10 @@ export type KeyboardShortcutGuideState = {
   hasUsedFormatShortcut: boolean;
   hasUsedHistoryShortcut: boolean;
 };
+export type AiGuideState = {
+  hasGeneratedDraft: boolean;
+  hasUsedSpellCheck: boolean;
+};
 
 type HelpDocument = Record<string, unknown>;
 
@@ -84,6 +97,8 @@ export const MANUAL_HELP_CHECK_IDS: ManualHelpCheckId[] = [
   'leadSummary',
   'cta',
   'proofread',
+  'address',
+  'season',
 ];
 
 export const DEFAULT_MANUAL_HELP_CHECKS: ManualHelpChecks = {
@@ -92,6 +107,8 @@ export const DEFAULT_MANUAL_HELP_CHECKS: ManualHelpChecks = {
   leadSummary: false,
   cta: false,
   proofread: false,
+  address: false,
+  season: false,
 };
 
 export const HELP_BRANCHES: HelpBranch[] = [
@@ -167,6 +184,29 @@ export const HELP_BRANCHES: HelpBranch[] = [
         title: '再利用しやすい形でテンプレート保存した',
         detail:
           '今後も使い回す見出し構成や本文の型ができたら、分かりやすい名前でテンプレート保存してください。チーム内での再利用や次回作成の短縮に役立ちます。',
+        kind: 'auto',
+      },
+    ],
+  },
+  {
+    id: 'ai-tools',
+    title: 'AI機能',
+    summary: '作成支援チャットと誤字脱字チェックを使うと、下書き作成と公開前確認が速くなります。',
+    detail:
+      'AI 機能は、本文のたたき台づくりと最終チェックで役割が分かれています。作成支援チャットで下書きを作り、公開前に誤字脱字チェックを回す流れで使うと安定します。',
+    items: [
+      {
+        id: 'aiDraftGenerated',
+        title: '作成支援チャットで下書きを作成した',
+        detail:
+          '右側の作成支援チャットに発表内容を送ると、AI が不足情報を確認しながら本文下書きを作成します。下書きカードが出たら「本文へ反映」でそのまま編集に戻れます。',
+        kind: 'auto',
+      },
+      {
+        id: 'aiSpellCheck',
+        title: 'AIの誤字脱字チェックを実行した',
+        detail:
+          'タイトルまたは本文の「チェック」ボタンを使って、公開前に一度 AI の誤字脱字チェックを実行してください。固有名詞や日付の見落としを減らせます。',
         kind: 'auto',
       },
     ],
@@ -263,6 +303,29 @@ export const HELP_BRANCHES: HelpBranch[] = [
       },
     ],
   },
+  {
+    id: 'one-point',
+    title: 'One Point アドバイス​',
+    summary: 'PRを​より​効果的に​届ける​ヒントを​お伝えします。',
+    detail:
+      'PRを​より​効果的に​届ける​ヒントを​お伝えします。',
+    items: [
+      {
+        id: 'address',
+        title: '住所を​追加した',
+        detail:
+          '活動拠点を​明記する​ことで、​同地域の​方々の​目に​留まりやすくなります。​',
+        kind: 'manual',
+      },
+      {
+        id: 'season',
+        title: '「旬」を​捉え、​共感を​呼ぶ。​',
+        detail:
+          '季節の​イベントや​記念日を​添える​ことで、​「今」と​いう​特別感が​生まれ、​メディアや​地域の​方々に​「自分たちの​ための​ニュースだ」と​身近に​感じて​もらいやすくなります。',
+        kind: 'manual',
+      },
+    ],
+  },
 ];
 
 export const HELP_ITEMS = flattenHelpItems(HELP_BRANCHES);
@@ -319,6 +382,7 @@ type BuildAutoHelpChecksOptions = {
   editorDocument: HelpDocument;
   templateGuideState: TemplateGuideState;
   keyboardShortcutGuideState: KeyboardShortcutGuideState;
+  aiGuideState: AiGuideState;
 };
 
 export function buildAutoHelpChecks({
@@ -330,6 +394,7 @@ export function buildAutoHelpChecks({
   editorDocument,
   templateGuideState,
   keyboardShortcutGuideState,
+  aiGuideState,
 }: BuildAutoHelpChecksOptions): AutoHelpChecks {
   const trimmedTitleCount = title.trim().length;
 
@@ -339,6 +404,8 @@ export function buildAutoHelpChecks({
     hasList: hasNodeType(editorDocument, 'bulletList') || hasNodeType(editorDocument, 'orderedList'),
     hasImage: hasNodeType(editorDocument, 'image'),
     hasLink: hasMarkType(editorDocument, 'link'),
+    aiDraftGenerated: aiGuideState.hasGeneratedDraft,
+    aiSpellCheck: aiGuideState.hasUsedSpellCheck,
     saveShortcut: keyboardShortcutGuideState.hasUsedSaveShortcut,
     formatShortcut: keyboardShortcutGuideState.hasUsedFormatShortcut,
     historyShortcut: keyboardShortcutGuideState.hasUsedHistoryShortcut,
@@ -375,11 +442,15 @@ export function buildHelpStatusText({
     hasList: autoHelpChecks.hasList ? '箇条書きあり' : '箇条書きなし',
     hasImage: autoHelpChecks.hasImage ? '画像あり' : '画像なし',
     hasLink: autoHelpChecks.hasLink ? 'リンクあり' : 'リンクなし',
+    aiDraftGenerated: autoHelpChecks.aiDraftGenerated ? '作成済み' : '未作成',
+    aiSpellCheck: autoHelpChecks.aiSpellCheck ? '実行済み' : '未実行',
     saveShortcut: autoHelpChecks.saveShortcut ? '使用済み' : '未使用',
     formatShortcut: autoHelpChecks.formatShortcut ? '使用済み' : '未使用',
     historyShortcut: autoHelpChecks.historyShortcut ? '使用済み' : '未使用',
     templateLoaded: autoHelpChecks.templateLoaded ? '読込済み' : '未読込',
     templateSaved: autoHelpChecks.templateSaved ? '保存済み' : '未保存',
+    address: manualHelpChecks.address ? 'チェック済み' : '未確認',
+    season: manualHelpChecks.season ? 'チェック済み' : '未確認',
   };
 }
 
